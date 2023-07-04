@@ -1,0 +1,242 @@
+---
+title: Genetic differentiation on flowering time in Cerastium fontanum using a reciprocal transplant experiment
+author: "Alicia Valdés"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    toc: yes
+    toc_depth: 4
+  html_document:
+    toc: yes
+    toc_depth: '4'
+    df_print: paged
+subtitle: Analyses with FFD
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+options(tibble.width = Inf)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+```{r load packages, include=FALSE}
+library(tidyverse)
+library(readxl)
+library(RColorBrewer)
+library(knitr)
+library(ggthemes)
+library(glmmTMB)
+library(lme4)
+library(lmerTest)
+library(car)
+library(sjPlot)
+library(ggeffects)
+```
+
+```{r Define ggplot themes and palettes, include=FALSE}
+my_theme <- function(){
+  theme_base()+theme(plot.background=element_rect(fill="white", colour=NA))+
+  theme(legend.position="none")+theme(text=element_text(family="serif"))+
+  theme(plot.title = element_text(hjust =-0.06))
+}
+my_theme_legend <- function(){
+  theme_base()+theme(plot.background=element_rect(fill="white", colour=NA))+
+  theme(text=element_text(family="serif"))+
+  theme(plot.title = element_text(hjust =-0.06))
+}
+myPalette <- colorRampPalette(brewer.pal(11, "YlOrRd"))
+```
+
+# Read clean data from .csv files
+
+```{r}
+data_transplants <- read_csv("data/clean/data_transplants.csv")
+```
+
+# Distributions
+
+```{r}
+ggplot(data_transplants,aes(x=FFD_corr))+
+  geom_histogram(color="black",fill="white")+
+  my_theme()
+ggplot(data_transplants,aes(x=log(FFD_corr)))+
+  geom_histogram(color="black",fill="white")+
+  my_theme()
+ggplot(data_transplants,aes(x=sqrt(FFD_corr)))+
+  geom_histogram(color="black",fill="white")+
+  my_theme()
+```
+
+# Models FFD
+
+## Temp mother + Temp father
+
+```{r}
+data_transplants$heat_zone <- factor(data_transplants$heat_zone, 
+                                     levels=c("Cold", "Intermediate", "Hot"))
+```
+
+```{r}
+model_FFD1<-lmer(FFD_corr~(temp_mother+temp_father)*heat_zone+
+                   (1|mother)+(1|father)+(1|crossing)+(1|plot),data_transplants)
+model_FFD2<-lmer(FFD_corr~(temp_mother+temp_father)*temp+
+                   (1|mother)+(1|father)+(1|crossing)+(1|plot),data_transplants)
+```
+
+```{r}
+tab_model(model_FFD1,model_FFD2,
+          transform=NULL,show.ci=F,show.se=T,show.stat=T,digits=3,
+          dv.labels=c("heat_zone","temp"),
+          title="Models FFD")
+```
+
+Save models as HTML table
+
+```{r include=FALSE}
+tab_model(model_FFD1,model_FFD2,
+          transform=NULL,show.ci=F,show.se=T,show.stat=T,digits=3,
+          dv.labels=c("heat_zone","temp"),
+          file="output/tables/Table_models_FFD.html",
+          title="Models FFD")
+```
+
+### Plots predicted effects
+
+#### Heat zone (model1)
+
+```{r}
+plot(ggpredict(model_FFD1,terms=c("heat_zone")),add.data=T)
+```
+
+There is plasticity in flowering time: individuals planted in warmer areas flower earlier.
+
+#### Temp at planting site (model2)
+
+Non-linear effect?
+
+```{r}
+plot(ggpredict(model_FFD2,terms=c("temp")),add.data=T)+
+  xlab("Temperature at planting site")
+```
+
+There is plasticity in flowering time: individuals planted in warmer areas flower earlier.
+
+#### Interaction heat zone x temp father (model1)
+
+```{r}
+plot(ggpredict(model_FFD1,terms=c("temp_father[all]","heat_zone")),add.data=F)+
+  scale_color_manual(values = c("#fecc5c", "#fd8d3c", "#e31a1c"))+
+  scale_fill_manual(values = c("#fecc5c", "#fd8d3c", "#e31a1c"))+
+  xlab("Temperature of the father")
+plot(ggpredict(model_FFD1,terms=c("heat_zone","temp_father[minmax]")),add.data=F)+
+  scale_color_manual(values = c("#fecc5c", "#e31a1c"))
+```
+
+#### Temp father (model2)
+
+```{r}
+plot(ggpredict(model_FFD2,terms=c("temp_father")),add.data=F)+
+  xlab("Temperature of the father")
+```
+
+I was expecting that this effect would go in the opposite direction, and that plants with fathers from colder origins would flower on average earlier. But maybe we should not really interpret this main effect, because the interaction with temperature at planting site is significant?
+
+#### Interaction temp at planting site x temp of the father (model2)
+
+```{r}
+plot(ggpredict(model_FFD2,terms=c("temp_father","temp[7.9:49.7 by=5]")),add.data=F,ci=F)+
+  scale_color_brewer(palette="YlOrRd")+
+  xlab("Temperature of the father")
+plot(ggpredict(model_FFD2,terms=c("temp","temp_father[minmax]")),add.data=F,ci=F)+
+  scale_color_manual(values = c("#fecc5c", "#e31a1c"))+
+  xlab("Temperature at planting site")
+```
+
+Plants with fathers from colder origins flower on average earlier when planted on warmer areas,
+and on average later when planted on colder areas. Plasticity varies between temperatures of origin of the father: the differences in FFD between planting sites are larger for plants with fathers from colder origin than for plants with fathers from warmer origin.
+
+## Mean temp parents
+
+```{r}
+data_transplants<-data_transplants%>%
+  mutate(mean_temp_parents=(temp_mother+temp_father)/2)
+```
+
+```{r}
+model_FFD1_mean<-lmer(FFD_corr~mean_temp_parents*heat_zone+
+                   (1|mother)+(1|father)+(1|crossing)+(1|plot),data_transplants)
+model_FFD2_mean<-lmer(FFD_corr~mean_temp_parents*temp+
+                   (1|mother)+(1|father)+(1|crossing)+(1|plot),data_transplants)
+```
+
+```{r}
+tab_model(model_FFD1_mean,model_FFD2_mean,
+          transform=NULL,show.ci=F,show.se=T,show.stat=T,digits=3,
+          dv.labels=c("heat_zone","temp"),
+          title="Models FFD mean temp parents")
+```
+
+Save models as HTML table
+
+```{r include=FALSE}
+tab_model(model_FFD1_mean,model_FFD2_mean,
+          transform=NULL,show.ci=F,show.se=T,show.stat=T,digits=3,
+          dv.labels=c("heat_zone","temp"),
+          file="output/tables/Table_models_FFD_meantemp.html",
+          title="Models FFD mean temp parents")
+```
+
+### Plots predicted effects
+
+#### Heat zone (model1)
+
+```{r}
+plot(ggpredict(model_FFD1_mean,terms=c("heat_zone")),add.data=T)
+```
+
+#### Temp at planting site (model2)
+
+Non-linear effect?
+
+```{r}
+plot(ggpredict(model_FFD2_mean,terms=c("temp")),add.data=T)+
+  xlab("Temperature at planting site")
+```
+
+#### Interaction heat zone x mean temp parents (model1)
+
+```{r}
+plot(ggpredict(model_FFD1_mean,terms=c("mean_temp_parents[all]","heat_zone")),add.data=F)+
+  scale_color_manual(values = c("#fecc5c", "#fd8d3c", "#e31a1c"))+
+  scale_fill_manual(values = c("#fecc5c", "#fd8d3c", "#e31a1c"))+
+  xlab("Mean temperature of parents")
+plot(ggpredict(model_FFD1_mean,terms=c("heat_zone","mean_temp_parents[minmax]")),add.data=F)+
+  scale_color_manual(values = c("#fecc5c", "#e31a1c"))
+```
+
+#### Mean temp parents (model2)
+
+```{r}
+plot(ggpredict(model_FFD2_mean,terms=c("mean_temp_parents")),add.data=F)+
+  xlab("Mean temperature of the parents")
+```
+
+#### Interaction temp at planting site x mean temp of the parents (model2)
+
+```{r}
+plot(ggpredict(model_FFD2_mean,terms=c("mean_temp_parents","temp[7.9:49.7 by=5]")),
+     add.data=F,ci=F)+
+  scale_color_brewer(palette="YlOrRd")+
+  xlab("Mean temperature of the parents")
+plot(ggpredict(model_FFD2_mean,terms=c("temp","mean_temp_parents[minmax]")),add.data=F,ci=F)+
+  scale_color_manual(values = c("#fecc5c", "#e31a1c"))+
+  xlab("Temperature at planting site")
+```
+
+# Session info
+
+```{r}
+sessionInfo()
+```
