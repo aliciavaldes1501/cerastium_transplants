@@ -48,7 +48,7 @@ myPalette <- colorRampPalette(brewer.pal(11, "YlOrRd"))
 Data from mothers and fathers from the greenhouse data file
 
 ```{r}
-data_mothers_fathers<-read_excel("C:/Users/avald/Dropbox/SU/Projects/cerastium_greenhouse/data/edited/Cerastium_greenhouse_spring_2022_editedAV.xlsx", 
+data_mothers_fathers<-read_excel("C:/Users/alici/Dropbox/SU/Projects/cerastium_greenhouse/data/edited/Cerastium_greenhouse_spring_2022_editedAV.xlsx", 
                        sheet="extracted_data_mothers_fathers")
 ```
 
@@ -61,7 +61,7 @@ data_phen_transplants<-read_excel("data/edited/Hengill_2022_Final.02_AV.xlsx",
 
 # IDs for matching with data from transplants
 
-The numbers for mohters and fathers of the transplanted plants match mother and father in the greenhouse data when the plant came from a cross-pollination. When the plant came from a self-pollination, the number for the mother (=father) is the original seed mother ID (mother_originalID_iceland) without the plot number (numeric_code).
+The numbers for mothers and fathers of the transplanted plants match mother and father in the greenhouse data when the plant came from a cross-pollination. When the plant came from a self-pollination, the number for the mother (=father) is the original seed mother ID (mother_originalID_iceland) without the plot number (numeric_code).
 
 For example, for mother_originalID_iceland = H05 422:3/2, if this plant was selfed, the mother id would be 422.
 
@@ -128,24 +128,66 @@ data_phen_transplants<-data_phen_transplants%>%
   mutate_at(c("n_shoots"),as.integer)
 ```
 
-## Calculate temperature
-
-```{r}
-data_phen_transplants<-data_phen_transplants%>%
-  mutate(temp=ifelse(is.na(temp1)&is.na(temp2)&is.na(temp3),NA, 
-                     # If all temps are NA --> temp = NA (4 cases)
-                     ifelse(!is.na(temp1),temp1, 
-                            # If temp1 is not NA --> temp = temp1
-                            ifelse(is.na(temp1)&!is.na(temp2),temp2,
-                                   # If temp1 is NA and temp 2 is not NA --> temp = temp2
-                                   temp3)))) # Otherwise temp= temp3
-```
-
 ## Create unique ids
 
 ```{r}
 data_phen_transplants<-data_phen_transplants%>%
   mutate(unique_id=paste(heat_zone,id,repl,sep="_")) 
+```
+
+## Calculate temperature
+
+Use temp1 and temp3. There are 509 cases where both temps are available:
+
+```{r}
+nrow(data_phen_transplants%>%filter(!is.na(temp1)&!is.na(temp3)))
+```
+
+Regression of temp3 on temp1 (and viceversa) using these 509 cases:
+
+```{r}
+model_temp3<-lm(temp3~temp1,
+           data_phen_transplants%>%filter(!is.na(temp1)&!is.na(temp3)))
+summary(model_temp3)
+model_temp1<-lm(temp1~temp3,
+           data_phen_transplants%>%filter(!is.na(temp1)&!is.na(temp3)))
+summary(model_temp1)
+data_phen_transplants%>%filter(!is.na(temp1)&!is.na(temp3))%>%
+  ggplot(aes(x=temp1,y=temp3))+geom_point()+geom_smooth(method="lm")
+data_phen_transplants%>%filter(!is.na(temp1)&!is.na(temp3))%>%
+  ggplot(aes(x=temp3,y=temp1))+geom_point()+geom_smooth(method="lm")
+```
+
+Use this regression to impute missing values of temp1 and temp3:
+
+```{r}
+# Create new columns for imputed values
+data_phen_transplants$temp1_imp <- data_phen_transplants$temp1
+data_phen_transplants$temp3_imp <- data_phen_transplants$temp3
+
+# Identify rows with missing values in temp1
+missing_temp1_rows <- is.na(data_phen_transplants$temp1)
+
+# Predict temp1 values using the regression model and update temp1_imp
+data_phen_transplants$temp1_imp[missing_temp1_rows] <-
+  predict(model_temp1, newdata = data_phen_transplants[missing_temp1_rows, ])
+
+# Identify rows with missing values in temp3
+missing_temp3_rows <- is.na(data_phen_transplants$temp3)
+
+# Predict temp3 values using the regression model and update temp3_imp
+data_phen_transplants$temp3_imp[missing_temp3_rows] <- 
+  predict(model_temp3, newdata = data_phen_transplants[missing_temp3_rows, ])
+
+# Now, data_phen_transplants$temp1_imp and data_phen_transplants$temp3_imp 
+# have imputed values while preserving original values
+```
+
+Calculate temperature as the mean of temp1_imp and temp3_imp. this was done in 852 out of 858 cases where these both temp1_imp and temp3_imp are available. Of the 6 remaining cases, 4 have all three temperature values missing, and in 2 only temp 2 is available. 
+
+```{r}
+data_phen_transplants<-data_phen_transplants%>%
+  mutate(temp=(temp1_imp+temp3_imp)/2)
 ```
 
 ## Convert to long format and divide stage into real stage + grazing
@@ -200,14 +242,16 @@ data_phen_transplants_long$stage  <- with(data_phen_transplants_long,
 unique(data_phen_transplants_long$graz) # Correct
 unique(data_phen_transplants_long$stage) # Correct
 
-ids_fl <- filter(data_phen_transplants_long, stage %in% c("F","F100","W","W100"))%>%
+ids_fl <- filter(data_phen_transplants_long, 
+                 stage %in% c("F","F100","W","W100"))%>%
   distinct(unique_id) 
 nrow(ids_fl) # 603 ids that flowered
   
 data_phen_transplants_long <- data_phen_transplants_long %>%
   filter(unique_id %in% as.vector(ids_fl$unique_id))
 
-length(unique(data_phen_transplants_long$unique_id)) # Now including only the 603 ids that flowered
+length(unique(data_phen_transplants_long$unique_id)) 
+# Now including only the 603 ids that flowered
 ```
 
 ## Create column for vegetative / flowering / wilted
@@ -297,7 +341,8 @@ data_phen_transplants_FFD <- data_phen_transplants_long %>%
   mutate(interval=date_firstF-date_lastV) %>%
   # Interval between 5 and 11 days (mean=7.22 days)
   mutate(interval=ifelse(is.na(date_lastV),7.22,interval))%>%
-  # Assign mean interval to those flowering in first revision (i.e. without date_lastV)
+  # Assign mean interval to those flowering in first revision 
+  # (i.e. without date_lastV)
   mutate(term_lastV=ifelse(stage_V=="V"|stage_V=="B1",0.2*interval, 
                     ifelse(stage_V=="B2",0*interval,
                     ifelse(stage_V=="B3"|stage_V=="B4",-0.2*interval,NA))),
@@ -316,10 +361,11 @@ data_phen_transplants_FFD <- data_phen_transplants_long %>%
 ```{r}
 data_transplants<-full_join(
   data_phen_transplants%>%select(unique_id,heat_zone,group,mother,father,id,
-                                 repl,plot,x,y,peak,fruit_coll,comments1,comments2,
-                                 poll_type,date_planted,temp),
+                                 repl,plot,x,y,peak,fruit_coll,comments1,
+                                 comments2,poll_type,date_planted,temp),
   data_phen_transplants_FFD%>%select(unique_id,FFD_corr)
-  ) # Full join, will assign NA to plants that did not flower (i.e. do not have a FFD_corr
+  ) 
+# Full join, will assign NA to plants that did not flower (i.e. do not have a FFD_corr
 ```
 
 # Merge with temp parents
@@ -339,7 +385,6 @@ data_temp_mothers<-data_temp_parents%>%
 data_temp_fathers<-data_temp_parents%>%
   rename(temp_father=temp)
 ```
-
 
 ```{r}
 data_transplants<-rbind(

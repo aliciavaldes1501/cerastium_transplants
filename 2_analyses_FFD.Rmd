@@ -33,6 +33,8 @@ library(lmerTest)
 library(car)
 library(sjPlot)
 library(ggeffects)
+library(performance)
+library(partR2)
 ```
 
 ```{r Define ggplot themes and palettes, include=FALSE}
@@ -69,7 +71,7 @@ ggplot(data_transplants,aes(x=sqrt(FFD_corr)))+
   my_theme()
 ```
 
-# Models FFD
+# Models FFD (OLD but USE?)
 
 ## Temp mother + Temp father
 
@@ -83,6 +85,8 @@ model_FFD1<-lmer(FFD_corr~(temp_mother+temp_father)*heat_zone+
                    (1|mother)+(1|father)+(1|crossing)+(1|plot),data_transplants)
 model_FFD2<-lmer(FFD_corr~(temp_mother+temp_father)*temp+
                    (1|mother)+(1|father)+(1|crossing)+(1|plot),data_transplants)
+# Both models with singular fit
+# Because of low variance in some of the random effectS?
 ```
 
 ```{r}
@@ -107,6 +111,7 @@ tab_model(model_FFD1,model_FFD2,
 #### Heat zone (model1)
 
 ```{r}
+plot(ggpredict(model_FFD1,terms=c("heat_zone")),add.data=F)
 plot(ggpredict(model_FFD1,terms=c("heat_zone")),add.data=T)
 ```
 
@@ -117,7 +122,7 @@ There is plasticity in flowering time: individuals planted in warmer areas flowe
 Non-linear effect?
 
 ```{r}
-plot(ggpredict(model_FFD2,terms=c("temp")),add.data=T)+
+plot(ggpredict(model_FFD2,terms=c("temp[all]")),add.data=T)+
   xlab("Temperature at planting site")
 ```
 
@@ -146,10 +151,10 @@ I was expecting that this effect would go in the opposite direction, and that pl
 #### Interaction temp at planting site x temp of the father (model2)
 
 ```{r}
-plot(ggpredict(model_FFD2,terms=c("temp_father","temp[7.9:49.7 by=5]")),add.data=F,ci=F)+
+plot(ggpredict(model_FFD2,terms=c("temp_father[all]","temp[7.9:49.7 by=5]")),add.data=F,ci=F)+
   scale_color_brewer(palette="YlOrRd")+
   xlab("Temperature of the father")
-plot(ggpredict(model_FFD2,terms=c("temp","temp_father[minmax]")),add.data=F,ci=F)+
+plot(ggpredict(model_FFD2,terms=c("temp[all]","temp_father[minmax]")),add.data=F,ci=F)+
   scale_color_manual(values = c("#fecc5c", "#e31a1c"))+
   xlab("Temperature at planting site")
 ```
@@ -193,6 +198,7 @@ tab_model(model_FFD1_mean,model_FFD2_mean,
 #### Heat zone (model1)
 
 ```{r}
+plot(ggpredict(model_FFD1_mean,terms=c("heat_zone")),add.data=F)
 plot(ggpredict(model_FFD1_mean,terms=c("heat_zone")),add.data=T)
 ```
 
@@ -201,7 +207,7 @@ plot(ggpredict(model_FFD1_mean,terms=c("heat_zone")),add.data=T)
 Non-linear effect?
 
 ```{r}
-plot(ggpredict(model_FFD2_mean,terms=c("temp")),add.data=T)+
+plot(ggpredict(model_FFD2_mean,terms=c("temp[all]")),add.data=T)+
   xlab("Temperature at planting site")
 ```
 
@@ -234,6 +240,321 @@ plot(ggpredict(model_FFD2_mean,terms=c("temp","mean_temp_parents[minmax]")),add.
   scale_color_manual(values = c("#fecc5c", "#e31a1c"))+
   xlab("Temperature at planting site")
 ```
+
+# Models similar to greenhouse paper
+
+## Prediction 1
+
+### Models
+
+```{r}
+model1_FFD<-lmer(FFD_corr~1+(1|father)+(1|mother)+(1|father:mother)+(1|plot),
+                 data_transplants)
+summary(model1_FFD)
+```
+
+### Proportions of variance
+
+```{r}
+Variance_FFD<-as.data.frame(VarCorr(model1_FFD))[,c(1,4)]
+# Intra-class correlations
+PropVar_FFD <- Variance_FFD%>%mutate(propvar=vcov/sum(vcov))%>%
+  mutate(variable="FFD")
+```
+
+```{r}
+ggplot(PropVar_FFD,aes(x=grp,y=propvar))+
+  geom_col()
+```
+
+### Heritability and maternal effects
+
+```{r}
+# h^2 (paternal effects)
+her_FFD<-as.numeric(4*subset(PropVar_FFD,grp=="father")[3])
+# Because the additive genetic variance, VA,
+# is expected to be four times the among pollen‐donor variance 
+# (Falconer & Mackay, 1996; Lynch & Walsh, 1998)
+her<-data.frame(value=rbind(her_FFD))%>%
+  rownames_to_column()%>%
+  mutate(variable=c("FFD"),
+         effect="Heritability")
+```
+
+```{r}
+# maternal effects
+
+# Maternal - paternal
+# ----------------------
+# summed effects
+
+# Because the pollen‐recipient variance component contains a combination of
+# genetic and environmental effects, we subtracted the additive genetic 
+# (pollen donor) component from the pollen-recipient variance component
+# before dividing the resulting estimate by VP to estimate 
+# m2 (m2 = (Vpollen recipient − Vpollen donor)/VP).
+
+# But what about the interaction?
+
+mat_FFD<-(Variance_FFD[3,2]-Variance_FFD[2,2])/
+  as.numeric(Variance_FFD%>%summarise(sum(vcov)))
+mat<-data.frame(value=rbind(mat_FFD))%>%
+  rownames_to_column()%>%
+  mutate(variable=c("FFD"),
+         effect="Maternal effects")
+```
+
+```{r}
+her_mat<-rbind(her,mat)
+her_mat
+```
+
+```{r}
+ggplot(her_mat,aes(x=effect,y=value))+
+  geom_bar(stat="identity",position="dodge")
+```
+
+### Table SM: LRTs for variance component
+
+### Table SM: LRTs for variance components
+
+(These results could be used to add asterisks to the previous plot).
+
+```{r}
+ranova(model1_FFD)
+```
+
+## Prediction 2
+
+### Model
+
+```{r}
+model2_FFD<-lmer(FFD_corr~temp+(1|father)+(1|mother)+(1|father:mother)+(1|plot)+
+                   (1|temp:father)+(1|temp:mother),
+                 data_transplants)
+summary(model2_FFD)
+```
+
+Singular fit: variances for some random effects are zero.
+
+### Proportions of variance
+
+```{r}
+# extract variance components
+Variance_FFD_temp <- as.data.frame(VarCorr(model2_FFD))[,c(1,4)]  
+# Intra-class correlation
+PropVar_FFD_temp <- Variance_FFD_temp%>%
+  mutate(propvar=vcov/sum(vcov))%>%mutate(variable="FFD")
+# Proportional variance
+Props_var_temp<-rbind(PropVar_FFD_temp)
+```
+
+```{r}
+ggplot(Props_var_temp,aes(x=grp,y=propvar))+
+  geom_col()
+```
+
+### Heritability and maternal effects
+
+Are these heritability and maternal effects of the SLOPE of RNs?
+
+```{r}
+# h^2 (paternal effects)
+her_FFD_temp<-4*subset(PropVar_FFD_temp,grp=="temp:father")[3]
+# Because the additive genetic variance, VA,
+# is expected to be four times the among pollen‐donor variance 
+# (Falconer & Mackay, 1996; Lynch & Walsh, 1998)
+her_temp<-data.frame(value=rbind(her_FFD_temp))%>%
+  mutate(variable=c("FFD"),
+         effect="Heritability")%>%
+  rename(value=propvar)
+```
+
+```{r}
+# maternal effects
+
+# Maternal - paternal
+# ----------------------
+# summed effects
+
+# Because the pollen‐recipient variance component contains a combination of
+# genetic and environmental effects, we subtracted the additive genetic 
+# (pollen donor) component from the pollen-recipient variance component
+# before dividing the resulting estimate by VP to estimate 
+# m2 (m2 = (Vpollen recipient − Vpollen donor)/VP).
+
+mat_FFD_temp<-(subset(Variance_FFD_temp,grp=="temp:mother")[2]-
+                  subset(Variance_FFD_temp,grp=="temp:father")[2])/
+  Variance_FFD_temp%>%summarise(sum(vcov))
+mat_temp<-data.frame(value=rbind(mat_FFD_temp))%>%
+  mutate(variable=c("FFD"),
+         effect="Maternal effects")%>%
+  rename(value=vcov)
+```
+
+```{r}
+her_mat_temp<-rbind(her_temp,mat_temp)
+her_mat_temp
+```
+
+```{r}
+ggplot(her_mat_temp,aes(x=effect,y=value))+
+  geom_bar(stat="identity",position="dodge")
+```
+
+This is probably not correct! Can we really get negative maternal effects? YES?
+
+### Table SM: LRTs for variance components
+
+```{r}
+ranova(model2_FFD)
+```
+
+## Figure 1 (Predictions 1-2)
+
+## Table 1 (Predictions 1-2)
+
+## Figure 2 (Prediction 2)
+
+Main effect of temperature significant for FFD
+
+```{r}
+plot(ggpredict(model2_FFD,terms="temp[all]"),add.data=T)
+```
+
+## Prediction 3
+
+### Models
+
+```{r}
+model3_FFD<-lmer(FFD_corr~temp_father+temp_mother+
+                      (1|father)+(1|mother)+(1|father:mother)+(1|plot),
+                 subset(data_transplants,!is.na(FFD_corr)))
+summary(model3_FFD)
+```
+
+```{r}
+plot(ggpredict(model3_FFD,terms=c("temp_father[all]")))
+```
+
+NS effect (p=0.075), and the sign of temp_father goes in the opposite direction as expected! (earlier FFD at a given temperature in individuals with fathers from warmer soils). 
+
+#### Table 2
+
+### Proportions of variance
+
+Proportion of variance explained by temperature of origin of fathers and mothers = proportion of variance explained by fixed effects: marginal R2.
+
+```{r}
+PropVar_FFD_temp_origin<-as.numeric(r2_nakagawa(model3_FFD,
+                                         tolerance=1e-324)$R2_marginal)
+Props_var_temp_origin<-data.frame(
+  values=c(PropVar_FFD_temp_origin),
+  variable=c("FFD"))
+```
+
+```{r}
+ggplot(Props_var_temp_origin,aes(x=variable,y=values))+
+  geom_bar(stat="identity",position="dodge")
+```
+
+Fixed singular fit problems (because of some variance components equalling zero) by increasing tolerance: can we trust these proportions of variance (for MFD, heated, and veg, unheated)?
+
+##### Temperature mother and father: partR2
+
+```{r eval=FALSE, include=FALSE}
+partR2_model3_FFD<-partR2(model3_FFD,
+                             partvars=c("temp_father","temp_mother"),
+                             R2_type="marginal",nboot=1000)
+save(partR2_model3_FFD, file = "output/models/partR2_model3_FFD.rda")
+```
+
+```{r}
+load("output/models/partR2_model3_FFD.rda")
+```
+
+```{r}
+Props_var_temp_mf<-
+  rbind(
+    partR2_model3_FFD$R2%>%mutate(variable="FFD")
+    )
+```
+
+```{r}
+ggplot(Props_var_temp_mf%>%
+         filter(term!="temp_father+temp_mother"&term!="Full")%>%
+         mutate(term=factor(term,levels=c("temp_father","temp_mother"),
+                            labels=c("Temperature father",
+                                     "Temperature mother"))),
+       aes(x=variable,y=estimate,ymin=CI_lower,ymax=CI_upper,
+                             fill=term))+
+  geom_bar(stat="identity")
+```
+
+#### Figure 3
+
+### Models mid-parental values
+
+```{r}
+model3_FFD_midP<-lmer(FFD_corr~mean_temp_parents+
+                      (1|father)+(1|mother)+(1|mother:father)+(1|plot),
+                      data_transplants)
+summary(model3_FFD_midP)
+```
+
+Mid-parental temperature NS.
+
+## Prediction 4
+
+### Models
+
+```{r}
+model4_FFD<-lmer(FFD_corr~temp*(temp_father+temp_mother)+
+                    (1|father)+(1|mother)+(1|father:mother)+(1|plot),
+                  data_transplants)
+summary(model4_FFD)
+```
+
+Interaction temp:temp_father is significant. There are temperature-related differences among fathers in the response to temperature of the planting site = Genetic differentiation related to origin temperature of the father in the slope of RNs?
+
+```{r}
+plot(ggpredict(model4_FFD,terms=c("temp_father")))
+```
+
+The sign of temp_father goes in the opposite direction as expected! (earlier FFD at a given temperature in individuals with fathers from warmer soils). But maybe we should not interpret this main effect, as the interaction with temp is significant??
+
+```{r}
+plot(ggpredict(model4_FFD,terms=c("temp_father","temp[quart]")))
+```
+
+As predicted: differences in phenology between high and low soil temperatures are predicted to be smaller for plants with fathers from warm soils than for plants with fathers from colder soils. 
+
+#### Table 3
+
+#### Figure 4
+
+### Models mid-parental values
+
+```{r}
+model4_FFD_midP<-lmer(FFD_corr~temp*mean_temp_parents+
+                    (1|father)+(1|mother)+(1|father:mother)+(1|plot),
+                    data_transplants)
+summary(model4_FFD_midP)
+```
+
+```{r}
+plot(ggpredict(model4_FFD_midP,terms=c("mean_temp_parents")))
+```
+
+The sign of mean_temp_parents goes in the opposite direction as expected! (earlier FFD at a given temperature in individuals with parents from warmer soils). But maybe we should not interpret this main effect, as the interaction with temp is significant??
+
+```{r}
+plot(ggpredict(model4_FFD_midP,terms=c("mean_temp_parents","temp[quart]")))
+```
+
+As predicted: differences in phenology between high and low soil temperatures are predicted to be smaller for plants with parents from warm soils than for plants with parents from colder soils. 
+
+# Predictions 3 and 4 with breeding values?
 
 # Session info
 
