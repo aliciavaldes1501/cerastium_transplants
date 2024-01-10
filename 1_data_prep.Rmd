@@ -135,6 +135,13 @@ data_phen_transplants<-data_phen_transplants%>%
   mutate(unique_id=paste(heat_zone,id,repl,sep="_")) 
 ```
 
+## Correct one error in stage
+
+```{r}
+data_phen_transplants<-data_phen_transplants%>%
+  mutate(stage2=ifelse(unique_id=="Hot_138_a"&stage2=="B3","W",stage2))
+```
+
 ## Calculate temperature
 
 Use temp1 and temp3. There are 509 cases where both temps are available:
@@ -265,11 +272,11 @@ data_phen_transplants_long <- data_phen_transplants_long %>%
                            ifelse(stage %in% c("W","W100"),"W",NA))))
 ```
 
-## Calculate FFD (mean and corrected)
+## Calculate FFD and LFD (mean and corrected)
 
-Get date for last recording with buds and first recording with flowers. Calculate FFD_meanDOY as the mean date between last recording with buds and first recording with flowers.
+FFD: Get date for last recording with buds and first recording with flowers. Calculate FFD_meanDOY as the mean date between last recording with buds and first recording with flowers.
 
-```{r message=FALSE, warning=FALSE}
+```{r}
 # Calculate dates when the plant was first recorded as flowering
 date_firstF  <- data_phen_transplants_long %>%
   group_by(unique_id) %>%
@@ -277,30 +284,6 @@ date_firstF  <- data_phen_transplants_long %>%
   filter(date==min(date,na.rm=T)) %>%
   mutate(date_firstF=date) %>%
   dplyr::select(unique_id,date_firstF)
-
-### CAREFUL FROM HERE ###
-
-# Calculate median of the dates when the plant was flowering
-date_medianF  <- data_phen_transplants_long %>%
-  group_by(unique_id) %>%
-  filter(V_F_W=="F") %>% # Recorded only as flowering?
-  # If it was wilted on the first recording where it was not vegetative, 
-  # we cannot calculate MFD
-  filter(date==median(date,na.rm=T)) %>%
-  mutate(date_medianF=date) %>%
-  dplyr::select(unique_id,date_medianF)
-
-# Calculate dates when the plant was last recorded as flowering
-date_lastF  <- data_phen_transplants_long %>%
-  group_by(unique_id) %>%
-  filter(V_F_W=="F") %>% # Recorded only as flowering?
-  # If it was wilted on the first recording where it was not vegetative, 
-  # we cannot calculate LFD
-  filter(date==max(date,na.rm=T)) %>%
-  mutate(date_lastF=date) %>%
-  dplyr::select(unique_id,date_lastF)
-
-### TO HERE ###
 
 # Calculate date when the plant was last recorded as vegetative
 # (before being recorded as flowering)
@@ -354,7 +337,71 @@ data_phen_transplants_FFD <- data_phen_transplants_long %>%
   # Calculate corrected FFD: FFD_meanDOY + both terms
 ```
 
-## TO DO: Calculate MFD and LFD (mean and corrected)
+LFD: Get date for last recording with flowers and first recording with wilted flowers. Calculate LFD_meanDOY as the mean date between last recording with flowers and first recording with wilted flowers.
+
+```{r}
+# Calculate dates when the plant was last recorded as flowering
+date_lastF  <- data_phen_transplants_long %>%
+  group_by(unique_id) %>%
+  filter(V_F_W=="F") %>% # Recorded only as flowering?
+  # If it was wilted on the first recording where it was not vegetative, 
+  # we cannot calculate LFD
+  filter(date==max(date,na.rm=T)) %>%
+  mutate(date_lastF=date) %>%
+  dplyr::select(unique_id,date_lastF)
+
+# Calculate date when the plant was first recorded as wilted flower
+# (after last record with flowers)
+date_firstW  <- data_phen_transplants_long %>%
+  group_by(unique_id) %>%
+  filter(V_F_W=="W") %>%
+  full_join(date_lastF) %>%
+  filter(date>=date_lastF) %>% 
+  # Remove records before last record with flowers
+  # and those where date_lastF=NA
+  filter(date==min(date)) %>%
+  mutate(date_firstW=date) %>%
+  dplyr::select(unique_id,date_firstW)
+
+data_phen_transplants_LFD <- data_phen_transplants_long %>%
+  dplyr::select(unique_id,date,stage,V_F_W) %>%
+  filter(!is.na(V_F_W)) %>%
+  left_join(date_firstW) %>%
+  filter(date<=date_firstW|is.na(date_firstW)) %>% 
+  # Remove records after first record with wilted flowers
+  # 1 with date_firstW=NA
+  left_join(date_lastF) %>%
+  filter(date>=date_lastF) %>%
+  # Remove records before last record with flowers
+  pivot_wider(id_cols=unique_id,names_from=V_F_W,
+              values_from=c(stage,date_firstW,date_lastF)) %>%
+  dplyr::select(unique_id,stage_F,stage_W,date_lastF_F,date_firstW_W) %>%
+  rename(date_lastF=date_lastF_F,date_firstW=date_firstW_W) %>%
+  # 1 with date_firstW=NA
+  ungroup() %>%
+  arrange(unique_id) %>%
+  mutate(date_lastF=yday(date_lastF),date_firstW=yday(date_firstW)) %>%
+  # Change to julian dates
+  mutate(LFD_meanDOY=ifelse(is.na(date_firstW),date_lastF+3.61, 
+                            # Calculate first estimate of LFD:
+                            # For one case where date_firstW is missing
+                            # assigned LFD as half a mean interval
+                            # date_lastF+(7.22/2)=date_lastF+3.61
+                            (date_lastF+date_firstW)/2)) %>%
+  # For others, assigned LFD_meanDOY as mean of date_lastF and date_firstW
+  mutate(interval=date_firstW-date_lastF) %>%
+  # Interval between 5 and 11 days (mean=7.22 days)
+  mutate(interval=ifelse(is.na(date_firstW),7.22,interval))%>%
+  # Assign mean interval to one case where date_firstW is missing
+  mutate(term_lastF=ifelse(stage_F=="F",0.2*interval,
+                           ifelse(stage_F=="F100",-0.2*interval,NA)),
+         term_firstW=ifelse(stage_W=="W",0.2*interval,
+                            ifelse(stage_W=="W100",-0.2*interval,NA)))%>% 
+  # Calculate terms to add for correcting FFD
+  rowwise() %>% 
+  mutate(LFD_corr=sum(LFD_meanDOY,term_lastF,term_firstW,na.rm=T))
+# Calculate corrected LFD: LFD_meanDOY + both terms
+```
 
 # Create datafile
 
@@ -365,9 +412,22 @@ data_transplants<-full_join(
                                  comments2,poll_type,date_planted,temp),
   data_phen_transplants_FFD%>%select(unique_id,FFD_corr)
   ) 
-# Full join, will assign NA to plants that did not flower (i.e. do not have a FFD_corr
+# Full join, will assign NA to plants that did not flower 
+# (i.e. do not have a FFD_corr)
+data_transplants<-full_join(data_transplants,
+                            data_phen_transplants_LFD%>%
+                              select(unique_id,LFD_corr))%>%
+  mutate(MeanFD=(FFD_corr+LFD_corr)/2)
+# Calculate MEAN (not median) flowering date, as the mean of FFD and LFD
 ```
 
+How many non-missing values?
+
+```{r}
+nrow(data_transplants%>%filter(!is.na(FFD_corr)))
+nrow(data_transplants%>%filter(!is.na(LFD_corr)))
+nrow(data_transplants%>%filter(!is.na(MeanFD)))
+```
 # Merge with temp parents
 
 This tibble will be used to merge with transplant data, in order to get to know the temperature of the parents.
