@@ -24,6 +24,8 @@ options(tibble.width = Inf)
 knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
 ```
 
+# Load libraries
+
 ```{r load packages, include=FALSE}
 library(tidyverse)
 library(readxl)
@@ -45,6 +47,8 @@ library(aster)
 library(ggpubr)
 library(piecewiseSEM)
 ```
+
+# Define ggplot themes
 
 ```{r Define ggplot themes and palettes, include=FALSE}
 my_theme <- function(){
