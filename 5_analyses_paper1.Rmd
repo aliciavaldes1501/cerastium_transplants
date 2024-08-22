@@ -1,0 +1,2851 @@
+---
+title: "Analyses Cerastium transplants paper 1"
+author: "Alicia Valdés"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  word_document:
+    toc: true
+    toc_depth: '4'
+  html_document:
+    toc: true
+    toc_depth: '4'
+    df_print: paged
+  pdf_document:
+    latex_engine: xelatex
+    toc: true
+    toc_depth: 4
+subtitle: Analyses with FFD
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+options(tibble.width = Inf)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+```{r load packages, include=FALSE}
+library(tidyverse)
+library(readxl)
+library(RColorBrewer)
+library(knitr)
+library(ggthemes)
+library(glmmTMB)
+library(lme4)
+library(lmerTest)
+library(car)
+library(sjPlot)
+library(ggeffects)
+library(performance)
+library(partR2)
+library(DHARMa)
+library(lmeresampler)
+library(gridExtra)
+library(piecewiseSEM)
+```
+
+```{r Define ggplot themes and palettes, include=FALSE}
+my_theme <- function(){
+  theme_base()+theme(plot.background=element_rect(fill="white", colour=NA))+
+  theme(legend.position="none")+theme(text=element_text(family="serif"))+
+  theme(plot.title = element_text(hjust =-0.06))
+}
+my_theme_legend <- function(){
+  theme_base()+theme(plot.background=element_rect(fill="white", colour=NA))+
+  theme(text=element_text(family="serif"))+
+  theme(plot.title = element_text(hjust =-0.06))
+}
+myPalette <- colorRampPalette(brewer.pal(11, "YlOrRd"))
+```
+
+# Load previously created objects
+
+```{r}
+load(file="output/models/model1_22_FFD_boot.rda")
+load(file="output/models/model1_22_LFD_boot.rda")
+load(file="output/models/model1_22_MeanFD_boot.rda")
+load(file="output/models/model1_23_FFD_boot.rda")
+load(file="output/models/model1_23_LFD_boot.rda")
+load(file="output/models/model1_23_MeanFD_boot.rda")
+load(file="output/models/model2_22_FFD_qf_boot.rda")
+load(file="output/models/model2_22_LFD_qf_boot.rda")
+load(file="output/models/model2_22_MeanFD_qf_boot.rda")
+load(file="output/models/model2_22_FFD_qf_boot_fixef.rda")
+load(file="output/models/model2_22_LFD_qf_boot_fixef.rda")
+load(file="output/models/model2_22_MeanFD_qf_boot_fixef.rda")
+load(file="output/models/model2_22_FFD_qf_boot_pvals.rda")
+#load(file="output/models/model2_22_LFD_qf_boot_pvals.rda")
+load(file="output/models/model2_22_MeanFD_qf_boot_pvals.rda")
+load(file="output/models/model2_23_FFD_boot.rda")
+load(file="output/models/model2_23_LFD_boot.rda")
+load(file="output/models/model2_23_MeanFD_boot.rda")
+load(file="output/models/model2_23_FFD_boot_fixef.rda")
+load(file="output/models/model2_23_LFD_boot_fixef.rda")
+load(file="output/models/model2_23_MeanFD_boot_fixef.rda")
+load(file="output/models/model2_23_FFD_boot_pvals.rda")
+load(file="output/models/model2_23_LFD_boot_pvals.rda")
+#load(file="output/models/model2_23_MeanFD_boot_pvals.rda")
+load(file="output/models/model3_22_FFD_boot_fixef.rda")
+load(file="output/models/model3_22_LFD_boot_fixef.rda")
+load(file="output/models/model3_22_MeanFD_boot_fixef.rda")
+load(file="output/models/model3_22_FFD_boot_pvals.rda")
+load(file="output/models/model3_22_LFD_boot_pvals.rda")
+load(file="output/models/model3_22_MeanFD_boot_pvals.rda")
+load(file="output/models/model3_23_FFD_boot_fixef.rda")
+load(file="output/models/model3_23_LFD_boot_fixef.rda")
+load(file="output/models/model3_23_MeanFD_boot_fixef.rda")
+load(file="output/models/model3_23_FFD_boot_pvals.rda")
+load(file="output/models/model3_23_LFD_boot_pvals.rda")
+load(file="output/models/model3_23_MeanFD_boot_pvals.rda")
+load(file="output/models/model4_22_FFD_boot_fixef.rda")
+load(file="output/models/model4_22_LFD_boot_fixef.rda")
+load(file="output/models/model4_22_MeanFD_boot_fixef.rda")
+#load(file="output/models/model4_22_FFD_boot_pvals.rda")
+load(file="output/models/model4_22_LFD_boot_pvals.rda")
+load(file="output/models/model4_22_MeanFD_boot_pvals.rda")
+load(file="output/models/model4_23_FFD_boot_fixef.rda")
+load(file="output/models/model4_23_LFD_boot_fixef.rda")
+load(file="output/models/model4_23_MeanFD_boot_fixef.rda")
+load(file="output/models/model4_23_FFD_boot_pvals.rda")
+load(file="output/models/model4_23_LFD_boot_pvals.rda")
+#load(file="output/models/model4_23_MeanFD_boot_pvals.rda")
+load(file="output/b_model_phensel_FFD_f.RData")
+load(file="output/b_model_phensel_LFD_f.RData")
+load(file="output/b_model_phensel_MeanFD_f.RData")
+```
+
+# Read clean data from .csv files
+
+```{r}
+data_transplants <- read_csv("data/clean/data_transplants.csv")%>%
+  mutate_at(c("unique_id","heat_zone","group","mother","father","id","repl",
+              "plot","peak","fruit_coll","poll_type","crossing","F_NF_A",
+              "year"),as.factor)%>%
+  mutate_at(c("n_fl_stems","n_opened_fl","n_closed_buds","tot_fl_bodies",
+              "median_h","per_invert_herb","n_stems_grazed","n_closed_coll_fr",
+              "n_open_coll_fr","n_count_fr","n_tot_fr","n_seed_fr1",
+              "n_seed_fr2","n_seed_fr3","n_seed_fr4","rest_combined",
+              "n_tot_seed","tot_fl_bodies_corr"),as.integer)
+```
+
+# Distributions phenology variables
+
+```{r}
+ggplot(data_transplants,aes(x=FFD_corr))+
+  geom_histogram(color="black",fill="white")+
+  my_theme()+facet_wrap(~year)
+ggplot(data_transplants,aes(x=LFD_corr))+
+  geom_histogram(color="black",fill="white")+
+  my_theme()+facet_wrap(~year)
+ggplot(data_transplants,aes(x=MeanFD))+
+  geom_histogram(color="black",fill="white")+
+  my_theme()+facet_wrap(~year)
+ggplot(data_transplants,aes(x=log(FFD_corr)))+
+  geom_histogram(color="black",fill="white")+
+  my_theme()+facet_wrap(~year)
+ggplot(data_transplants,aes(x=log(LFD_corr)))+
+  geom_histogram(color="black",fill="white")+
+  my_theme()+facet_wrap(~year)
+ggplot(data_transplants,aes(x=log(MeanFD)))+
+  geom_histogram(color="black",fill="white")+
+  my_theme()+facet_wrap(~year)
+ggplot(data_transplants,aes(x=sqrt(FFD_corr)))+
+  geom_histogram(color="black",fill="white")+
+  my_theme()+facet_wrap(~year)
+ggplot(data_transplants,aes(x=sqrt(LFD_corr)))+
+  geom_histogram(color="black",fill="white")+
+  my_theme()+facet_wrap(~year)
+ggplot(data_transplants,aes(x=sqrt(MeanFD)))+
+  geom_histogram(color="black",fill="white")+
+  my_theme()+facet_wrap(~year)
+```
+
+None of the distribution is looking super normal.
+
+# Check that temperatures for sires and dams coincide with temperatures in list of sires and dams:
+
+```{r}
+temps_dams_sires<-data_transplants%>%
+  dplyr::select(mother,father,temp_mother,temp_father)%>%
+  distinct()%>% # Removes duplicate rows
+  pivot_longer(cols=starts_with("temp"),names_to="type",values_to="temp")%>%
+  mutate(id = case_when(type=="temp_mother"~paste0("D",mother),
+                        type=="temp_father"~paste0("S",father)))%>%
+  dplyr::select(id,temp)
+# Read csv file with temperatures from sire and dam list
+temps_dams_sires_list<-read_csv("C:/Users/alici/Dropbox/SU/Projects/cerastium_greenhouse/data/clean/temps_dams_sires_list.csv")
+# Merge the data frames on the "id" column
+merged_data<-temps_dams_sires%>%
+  inner_join(temps_dams_sires_list,by="id",suffix=c("_data","_list"))
+# Check for discrepancies
+discrepancies<-merged_data%>%filter(temp_data!=temp_list)
+# View the discrepancies
+print(discrepancies)  # Two discrepancies
+```
+
+Correct discrepancies:
+
+Temperature for mother 24 should be 14.9, not 20.
+Temperature for father 320 should be 9.0, not 13.6.
+
+```{r}
+data_transplants <- data_transplants %>%
+  mutate(temp_mother = if_else(mother == 24, 14.9, temp_mother),
+         temp_father = if_else(father == 320, 9.0, temp_father))
+```
+
+Check again for discrepancies:
+
+```{r}
+temps_dams_sires<-data_transplants%>%
+  dplyr::select(mother,father,temp_mother,temp_father)%>%
+  distinct()%>% # Removes duplicate rows
+  pivot_longer(cols=starts_with("temp"),names_to="type",values_to="temp")%>%
+  mutate(id = case_when(type=="temp_mother"~paste0("D",mother),
+                        type=="temp_father"~paste0("S",father)))%>%
+  dplyr::select(id,temp)
+# Read csv file with temperatures from sire and dam list
+merged_data<-temps_dams_sires%>%
+  inner_join(temps_dams_sires_list,by="id",suffix=c("_data","_list"))
+# Check for discrepancies
+discrepancies<-merged_data%>%filter(temp_data!=temp_list)
+# View the discrepancies
+print(discrepancies)  # No discrepancies
+```
+
+
+# TO DO: Include vegetative phenology
+
+# PREDICTION 1
+
+"Trait expression is a function of both the current temperature environment, in terms of plasticity, and the past temperature environment, in terms of genetic effects, and follows a counter-gradient pattern, i.e. environmental and genetic effects of soil temperature on flowering time are in opposite directions."
+
+The models below are a series of models similar to the ones use in the greenhouse paper. For this paper, we might want to keep only models including origin temperatures and soil temperature, but I have kept everything so far.
+
+## A) Heritability of mean responses
+
+### Models
+
+Including random effects of father, mother and plot. Random effects with variance = 0 were removed to avoid singular fit. 
+
+#### 2022
+
+```{r}
+model1_22_FFD<-lmer(FFD_corr~1+(1|father)+(1|mother)+
+                   #(1|father:mother)+ # Not included because variance=0
+                   # to avoid singular fit
+                   (1|plot),
+                 data_transplants%>%filter(year==2022&!is.na(FFD_corr)))
+model1_22_LFD<-lmer(LFD_corr~1+(1|father)+(1|mother)+
+                   #(1|father:mother)+ # Not included because variance=2.459e-07
+                      # to avoid singular fit
+                   (1|plot),
+                 data_transplants%>%filter(year==2022&!is.na(LFD_corr)))
+model1_22_MeanFD<-lmer(MeanFD~1+(1|father)+(1|mother)+
+                      #(1|father:mother)+ # Not included because variance=0
+                      # to avoid singular fit
+                      (1|plot),
+                 data_transplants%>%filter(year==2022&!is.na(MeanFD)))
+summary(model1_22_FFD)
+summary(model1_22_LFD)
+summary(model1_22_MeanFD)
+```
+
+#### 2023
+
+```{r}
+model1_23_FFD<-lmer(FFD_corr~1+(1|father)+(1|mother)+
+                   #(1|father:mother)+ # Not included because variance=0
+                   # to avoid singular fit
+                   (1|plot),
+                 data_transplants%>%filter(year==2023&!is.na(FFD_corr)))
+model1_23_LFD<-lmer(LFD_corr~1+(1|father)+(1|mother)+(1|father:mother)+
+                   #(1|father:mother)+ # Not included because variance=2.459e-07
+                      # to avoid singular fit
+                   (1|plot),
+                 data_transplants%>%filter(year==2023&!is.na(LFD_corr)))
+model1_23_MeanFD<-lmer(MeanFD~1+(1|mother)+
+                      #(1|father)+(1|father:mother)+ # Not included because variance=0
+                      # to avoid singular fit
+                      (1|plot),
+                 data_transplants%>%filter(year==2023&!is.na(MeanFD)))
+summary(model1_23_FFD)
+summary(model1_23_LFD)
+summary(model1_23_MeanFD)
+```
+
+#### Model diagnostics
+
+```{r}
+plot(simulateResiduals(model1_22_FFD))
+plot(simulateResiduals(model1_22_LFD))
+plot(simulateResiduals(model1_22_MeanFD))
+plot(simulateResiduals(model1_23_FFD))
+plot(simulateResiduals(model1_23_LFD))
+plot(simulateResiduals(model1_23_MeanFD))
+```
+
+Overall deviations from the expected distribution detected. 
+
+#### Bootstrapped models
+
+I tried to bootstrap the model using the function bootstrap in the package lmeresampler. Bootstrapping is supposed to allow for bias correction, adjusted standard errors and confidence intervals when distributional assumptions are not met (i.e. our case). I used 1000 bootstrap resamples and a residual bootstrap. Reference: https://journal.r-project.org/articles/RJ-2023-015/
+
+Function to calculate variances from model objects:
+
+```{r}
+variances <- function(object) {
+  vc <- setNames(as.numeric(as.data.frame(VarCorr(object))[, c(1, 4)]$vcov), as.character(as.data.frame(VarCorr(object))$grp))
+  vc
+}
+```
+
+Bootstrap using the variances function (takes long to run).
+
+Using residual bootstrap - need to do research on different types of bootstrap!
+
+##### 2022
+
+```{r eval=FALSE, include=FALSE}
+model1_22_FFD_boot<-bootstrap(model1_22_FFD,.f=variances,type="residual",B=1000)
+model1_22_LFD_boot<-bootstrap(model1_22_LFD,.f=variances,type="residual",B=1000)
+model1_22_MeanFD_boot<-bootstrap(model1_22_MeanFD,.f=variances,type="residual",
+                              B=1000)
+save(model1_22_FFD_boot,file="output/models/model1_22_FFD_boot.rda")
+save(model1_22_LFD_boot,file="output/models/model1_22_LFD_boot.rda")
+save(model1_22_MeanFD_boot,file="output/models/model1_22_MeanFD_boot.rda")
+```
+
+##### 2023
+
+```{r eval=FALSE, include=FALSE}
+model1_23_FFD_boot<-bootstrap(model1_23_FFD,.f=variances,type="residual",B=1000)
+model1_23_LFD_boot<-bootstrap(model1_23_LFD,.f=variances,type="residual",B=1000)
+model1_23_MeanFD_boot<-bootstrap(model1_23_MeanFD,.f=variances,type="residual",
+                              B=1000)
+save(model1_23_FFD_boot,file="output/models/model1_23_FFD_boot.rda")
+save(model1_23_LFD_boot,file="output/models/model1_23_LFD_boot.rda")
+save(model1_23_MeanFD_boot,file="output/models/model1_23_MeanFD_boot.rda")
+```
+
+### Proportions of variance
+
+Calculated with the bootstrapped variance components (but very, very similar to proportions of variance calculated with original variance components - not shown).
+
+Maybe bootstrapping is more important for significance of effects?
+
+#### 2022
+
+```{r}
+Variance_22_FFD_boot<-as.data.frame(model1_22_FFD_boot$observed)%>%
+  rownames_to_column(var="grp")%>%
+  mutate(vcov=model1_22_FFD_boot$observed)%>%
+  select(grp,vcov)
+Variance_22_LFD_boot<-as.data.frame(model1_22_LFD_boot$observed)%>%
+  rownames_to_column(var="grp")%>%
+  mutate(vcov=model1_22_LFD_boot$observed)%>%
+  select(grp,vcov)
+Variance_22_MeanFD_boot<-as.data.frame(model1_22_MeanFD_boot$observed)%>%
+  rownames_to_column(var="grp")%>%
+  mutate(vcov=model1_22_MeanFD_boot$observed)%>%
+  select(grp,vcov)
+# Intra-class correlations
+PropVar_22_FFD_boot <- Variance_22_FFD_boot%>%
+  mutate(propvar=vcov/sum(vcov))%>%
+  mutate(variable="FFD")
+PropVar_22_LFD_boot <- Variance_22_LFD_boot%>%
+  mutate(propvar=vcov/sum(vcov))%>%
+  mutate(variable="LFD")
+PropVar_22_MeanFD_boot <- Variance_22_MeanFD_boot%>%
+  mutate(propvar=vcov/sum(vcov))%>%
+  mutate(variable="MeanFD")
+Props_var_22_boot<-rbind(PropVar_22_FFD_boot,PropVar_22_LFD_boot,
+                         PropVar_22_MeanFD_boot)
+```
+
+#### 2023
+
+```{r}
+Variance_23_FFD_boot<-as.data.frame(model1_23_FFD_boot$observed)%>%
+  rownames_to_column(var="grp")%>%
+  mutate(vcov=model1_23_FFD_boot$observed)%>%
+  select(grp,vcov)
+Variance_23_LFD_boot<-as.data.frame(model1_23_LFD_boot$observed)%>%
+  rownames_to_column(var="grp")%>%
+  mutate(vcov=model1_23_LFD_boot$observed)%>%
+  select(grp,vcov)
+Variance_23_MeanFD_boot<-as.data.frame(model1_23_MeanFD_boot$observed)%>%
+  rownames_to_column(var="grp")%>%
+  mutate(vcov=model1_23_MeanFD_boot$observed)%>%
+  select(grp,vcov)
+# Intra-class correlations
+PropVar_23_FFD_boot <- Variance_23_FFD_boot%>%
+  mutate(propvar=vcov/sum(vcov))%>%
+  mutate(variable="FFD")
+PropVar_23_LFD_boot <- Variance_23_LFD_boot%>%
+  mutate(propvar=vcov/sum(vcov))%>%
+  mutate(variable="LFD")
+PropVar_23_MeanFD_boot <- Variance_23_MeanFD_boot%>%
+  mutate(propvar=vcov/sum(vcov))%>%
+  mutate(variable="MeanFD")
+Props_var_23_boot<-rbind(PropVar_23_FFD_boot,PropVar_23_LFD_boot,
+                         PropVar_23_MeanFD_boot)
+```
+
+#### Comparison both years
+
+```{r}
+grid.arrange(
+  ggplot(Props_var_22_boot,aes(x=variable,y=propvar,fill=grp))+geom_col()+
+    ggtitle("2022")+theme(legend.position="top"),
+  ggplot(Props_var_23_boot,aes(x=variable,y=propvar,fill=grp))+geom_col()+
+    ggtitle("2023")+theme(legend.position="top"),
+  ncol=2)
+```
+
+Very low proportions of variance explained by father and mother. Most variance explained by plot (especially in 2022).
+
+### Heritability and maternal effects
+
+#### 2022
+
+```{r}
+# h^2 (paternal effects)
+her_22_FFD<-as.numeric(4*subset(PropVar_22_FFD_boot,grp=="father")[3])
+her_22_LFD<-as.numeric(4*subset(PropVar_22_LFD_boot,grp=="father")[3])
+her_22_MeanFD<-as.numeric(4*subset(PropVar_22_MeanFD_boot,grp=="father")[3])
+# Because the additive genetic variance, VA,
+# is expected to be four times the among pollen‐donor variance 
+# (Falconer & Mackay, 1996; Lynch & Walsh, 1998)
+her_22<-data.frame(value=rbind(her_22_FFD,her_22_LFD,her_22_MeanFD))%>%
+  rownames_to_column()%>%
+  mutate(variable=c("FFD","LFD","MeanFD"),
+         effect="Heritability")
+```
+
+```{r}
+# maternal effects
+
+# Maternal - paternal
+# ----------------------
+# summed effects
+
+# Because the pollen‐recipient variance component contains a combination of
+# genetic and environmental effects, we subtracted the additive genetic 
+# (pollen donor) component from the pollen-recipient variance component
+# before dividing the resulting estimate by VP to estimate 
+# m2 (m2 = (Vpollen recipient − Vpollen donor)/VP).
+
+# But what about the interaction?
+
+mat_22_FFD<-as.numeric(((Variance_22_FFD_boot%>%filter(grp=="mother"))$vcov-
+            (Variance_22_FFD_boot%>%filter(grp=="father"))$vcov))/
+  as.numeric(Variance_22_FFD_boot%>%summarise(sum(vcov)))
+mat_22_LFD<-as.numeric(((Variance_22_LFD_boot%>%filter(grp=="mother"))$vcov-
+            (Variance_22_LFD_boot%>%filter(grp=="father"))$vcov))/
+  as.numeric(Variance_22_LFD_boot%>%summarise(sum(vcov)))
+mat_22_MeanFD<-as.numeric(((Variance_22_MeanFD_boot%>%filter(grp=="mother"))$vcov-
+            (Variance_22_MeanFD_boot%>%filter(grp=="father"))$vcov))/
+  as.numeric(Variance_22_MeanFD_boot%>%summarise(sum(vcov)))
+
+mat_22<-data.frame(value=rbind(mat_22_FFD))%>%
+  rownames_to_column()%>%
+  mutate(variable=c("FFD"),
+         effect="Maternal effects")
+mat_22<-data.frame(value=rbind(mat_22_FFD,mat_22_LFD,mat_22_MeanFD))%>%
+  rownames_to_column()%>%
+  mutate(variable=c("FFD","LFD","MeanFD"),
+         effect="Maternal effects")
+```
+
+```{r}
+her_mat_22<-rbind(her_22,mat_22)
+her_mat_22
+```
+
+#### 2023
+
+```{r}
+# h^2 (paternal effects)
+her_23_FFD<-as.numeric(4*subset(PropVar_23_FFD_boot,grp=="father")[3])
+her_23_LFD<-as.numeric(4*subset(PropVar_23_LFD_boot,grp=="father")[3])
+her_23_MeanFD<-as.numeric(4*0)
+# Because the additive genetic variance, VA,
+# is expected to be four times the among pollen‐donor variance 
+# (Falconer & Mackay, 1996; Lynch & Walsh, 1998)
+her_23<-data.frame(value=rbind(her_23_FFD,her_23_LFD,her_23_MeanFD))%>%
+  rownames_to_column()%>%
+  mutate(variable=c("FFD","LFD","MeanFD"),
+         effect="Heritability")
+```
+
+```{r}
+# maternal effects
+
+# Maternal - paternal
+# ----------------------
+# summed effects
+
+# Because the pollen‐recipient variance component contains a combination of
+# genetic and environmental effects, we subtracted the additive genetic 
+# (pollen donor) component from the pollen-recipient variance component
+# before dividing the resulting estimate by VP to estimate 
+# m2 (m2 = (Vpollen recipient − Vpollen donor)/VP).
+
+# But what about the interaction?
+
+mat_23_FFD<-as.numeric(((Variance_23_FFD_boot%>%filter(grp=="mother"))$vcov-
+            (Variance_23_FFD_boot%>%filter(grp=="father"))$vcov))/
+  as.numeric(Variance_23_FFD_boot%>%summarise(sum(vcov)))
+mat_23_LFD<-as.numeric(((Variance_23_LFD_boot%>%filter(grp=="mother"))$vcov-
+            (Variance_23_LFD_boot%>%filter(grp=="father"))$vcov))/
+  as.numeric(Variance_23_LFD_boot%>%summarise(sum(vcov)))
+mat_23_MeanFD<-as.numeric(((Variance_23_MeanFD_boot%>%filter(grp=="mother"))$vcov-
+            0))/
+  as.numeric(Variance_23_MeanFD_boot%>%summarise(sum(vcov)))
+
+mat_23<-data.frame(value=rbind(mat_23_FFD))%>%
+  rownames_to_column()%>%
+  mutate(variable=c("FFD"),
+         effect="Maternal effects")
+mat_23<-data.frame(value=rbind(mat_23_FFD,mat_23_LFD,mat_23_MeanFD))%>%
+  rownames_to_column()%>%
+  mutate(variable=c("FFD","LFD","MeanFD"),
+         effect="Maternal effects")
+```
+
+```{r}
+her_mat_23<-rbind(her_23,mat_23)
+her_mat_23
+```
+
+#### Comparison both years
+
+```{r}
+grid.arrange(
+  ggplot(her_mat_22,aes(x=variable,y=value,fill=effect))+
+    geom_bar(stat="identity",position="dodge")+ggtitle("2022")+
+    theme(legend.position="top"),
+  ggplot(her_mat_23,aes(x=variable,y=value,fill=effect))+
+    geom_bar(stat="identity",position="dodge")+ggtitle("2023")+
+    theme(legend.position="top"),
+  ncol=2)
+```
+
+Heritabilities are very low (all <0.05 in 2022, and even lower (all <0.01) in 2023.
+
+### Likelihood ratio tests for variance components
+
+Based on original models, not on bootstrap.
+
+(These results could be used to add asterisks to the previous plot).
+
+```{r}
+ranova(model1_22_FFD)
+ranova(model1_22_LFD)
+ranova(model1_22_MeanFD)
+ranova(model1_23_FFD)
+ranova(model1_23_LFD)
+ranova(model1_23_MeanFD)
+```
+
+Father always NS, mother only significant for FFD and meanFD in 2022.
+
+## B) Heritability of plasticities
+
+### Models (linear)
+
+Including random effects of father, mother and plot, and fixed effect of temperature at the planting site as well and interactions of temperature at the planting site with father and mother. Random effects with variance = 0 were removed to avoid singular fit. Only including linear effects of temperature.
+
+#### 2022
+
+```{r}
+model2_22_FFD<-lmer(FFD_corr~temp+(1|father)+(1|mother)+
+                   #(1|father:mother)+ # Not included because variance=0
+                   # to avoid singular fit
+                   (1|plot)+(1|temp:father)+(1|temp:mother),
+                 data_transplants%>%filter(year==2022&!is.na(FFD_corr)))
+model2_22_LFD<-lmer(LFD_corr~temp+
+                   #(1|father)+ # Not included because variance=0
+                   # to avoid singular fit
+                   (1|mother)+
+                   #(1|father:mother)+ # Not included because variance=0
+                   # to avoid singular fit
+                   (1|plot)+
+                   #(1|temp:father)+ # Not included because variance=0
+                   # to avoid singular fit
+                   (1|temp:mother),
+                 data_transplants%>%filter(year==2022&!is.na(LFD_corr)))
+model2_22_MeanFD<-lmer(MeanFD~temp+
+                      #(1|father)+ # Not included because variance=6.776e-05
+                      # to avoid singular fit
+                      (1|mother)+
+                      #(1|father:mother)+ # Not included because variance=0
+                      # to avoid singular fit
+                      (1|plot)+(1|temp:father)+(1|temp:mother),
+                 data_transplants%>%filter(year==2022&!is.na(MeanFD)))
+summary(model2_22_FFD)
+summary(model2_22_LFD)
+summary(model2_22_MeanFD)
+```
+
+#### 2023
+
+```{r}
+model2_23_FFD<-lmer(FFD_corr~temp+(1|father)+(1|mother)+(1|father:mother)+
+                   (1|plot)+(1|temp:father)+(1|temp:mother),
+                 data_transplants%>%filter(year==2023&!is.na(FFD_corr)))
+model2_23_LFD<-lmer(LFD_corr~temp+
+                   #(1|father)+ # Not included because variance=0
+                   # to avoid singular fit
+                   (1|mother)+(1|father:mother)+
+                   #(1|father:mother)+ # Not included because variance=0
+                   # to avoid singular fit
+                   (1|plot)+(1|temp:father),
+                   #(1|temp:mother) not included because singular fit
+                 data_transplants%>%filter(year==2023&!is.na(LFD_corr)))
+model2_23_MeanFD<-lmer(MeanFD~temp+
+                      #(1|father)+ # Not included because variance=6.776e-05
+                      # to avoid singular fit
+                      (1|mother)+(1|father:mother)+
+                      (1|plot)+(1|temp:father)+(1|temp:mother),
+                 data_transplants%>%filter(year==2023&!is.na(MeanFD)))
+summary(model2_23_FFD)
+summary(model2_23_LFD)
+summary(model2_23_MeanFD)
+```
+
+#### Model diagnostics
+
+```{r}
+plot(simulateResiduals(model2_22_FFD))
+plot(simulateResiduals(model2_22_LFD))
+plot(simulateResiduals(model2_22_MeanFD))
+plot(simulateResiduals(model2_23_FFD))
+plot(simulateResiduals(model2_23_LFD))
+plot(simulateResiduals(model2_23_MeanFD))
+```
+
+Overall deviations from the expected distribution detected. Heteroscedasticity.
+
+### Models (quadratic)
+
+Including random effects of father, mother and plot, and fixed effect of temperature at the planting site as well and interactions of temperature at the planting site with father and mother. Random effects with variance = 0 were removed to avoid singular fit. Including linear + quadratic effects of temperature.
+
+#### 2022
+
+```{r}
+data_transplants$temp_square<-(data_transplants$temp)^2
+model2_22_FFD_q<-lmer(FFD_corr~temp+temp_square+(1|father)+(1|mother)+
+                   #(1|father:mother)+ # Not included because variance=0
+                   # to avoid singular fit
+                     (1|plot)+
+                     (1|temp:father)+(1|temp:mother)+
+                     (1|temp_square:father)+(1|temp_square:mother),
+                   data_transplants%>%filter(year==2022&!is.na(FFD_corr)))
+# Some warnings, not sure what to do
+model2_22_LFD_q<-lmer(LFD_corr~temp+temp_square+
+                     #(1|father)+ # Not included because variance=0
+                     # to avoid singular fit
+                     (1|mother)+
+                   #(1|father:mother)+ # Not included because variance=0
+                   # to avoid singular fit
+                     (1|plot)+
+                     (1|temp:father)+(1|temp:mother)+
+                     (1|temp_square:father)+(1|temp_square:mother),
+                   data_transplants%>%filter(year==2022&!is.na(LFD_corr)))
+# Some warnings, not sure what to do
+model2_22_MeanFD_q<-lmer(MeanFD~temp+temp_square+
+                        #(1|father)+ # Not included because variance=0
+                        # to avoid singular fit
+                        (1|mother)+
+                   #(1|father:mother)+ # Not included because variance=0
+                   # to avoid singular fit
+                     (1|plot)+
+                     (1|temp:father)+(1|temp:mother)+
+                     (1|temp_square:father)+(1|temp_square:mother),
+                   data_transplants%>%filter(year==2022&!is.na(MeanFD)))
+summary(model2_22_FFD_q)
+summary(model2_22_LFD_q)
+summary(model2_22_MeanFD_q)
+```
+
+#### 2023
+
+```{r}
+model2_23_FFD_q<-lmer(FFD_corr~temp+temp_square+(1|father)+(1|mother)+
+                        (1|father:mother)+(1|plot)+
+                     (1|temp:father)+(1|temp:mother)+
+                     (1|temp_square:father)+(1|temp_square:mother),
+                   data_transplants%>%filter(year==2023&!is.na(FFD_corr)))
+# Some warnings, not sure what to do
+model2_23_LFD_q<-lmer(LFD_corr~temp+temp_square+
+                     #(1|father)+ # Not included because variance=0
+                     # to avoid singular fit
+                     (1|mother)+
+                   #(1|father:mother)+ # Not included because variance=0
+                   # to avoid singular fit
+                     (1|plot)+
+                     (1|temp:mother)+
+                     (1|temp_square:mother),
+                   #(1|temp:father)+(1|temp_square:father)+ 
+                   # removed due to singular fit
+                   data_transplants%>%filter(year==2023&!is.na(LFD_corr)))
+# Some warnings, not sure what to do
+model2_23_MeanFD_q<-lmer(MeanFD~temp+temp_square+
+                        #(1|father)+ # Not included because variance=0
+                        # to avoid singular fit
+                        (1|mother)+
+                   #(1|father:mother)+ # Not included because variance=0
+                   # to avoid singular fit
+                     (1|plot)+
+                     (1|temp:mother)+
+                     (1|temp_square:mother),
+                   #(1|temp:father)+(1|temp_square:father)+ 
+                   # removed due to singular fit
+                   data_transplants%>%filter(year==2023&!is.na(MeanFD)))
+# Some warnings, not sure what to do
+summary(model2_23_FFD_q)
+summary(model2_23_LFD_q)
+summary(model2_23_MeanFD_q)
+```
+
+#### Model diagnostics
+
+```{r}
+plot(simulateResiduals(model2_22_FFD_q))
+plot(simulateResiduals(model2_22_LFD_q))
+plot(simulateResiduals(model2_22_MeanFD_q))
+plot(simulateResiduals(model2_23_FFD_q))
+plot(simulateResiduals(model2_23_LFD_q))
+plot(simulateResiduals(model2_23_MeanFD_q))
+```
+
+Overall deviations from the expected distribution detected. Heteroscedasticity.
+
+### Models (quadratic only in fixed effects)
+
+Including random effects of father, mother and plot, and fixed effect of temperature at the planting site as well and interactions of temperature at the planting site with father and mother. Random effects with variance = 0 were removed to avoid singular fit. Including linear + quadratic effects of temperature (quadratic only in fixed effects).
+
+#### 2022
+
+```{r}
+model2_22_FFD_qf<-lmer(FFD_corr~temp+I(temp^2)+
+                      # same as temp+temp_square but better for ggpredict
+                      (1|father)+(1|mother)+
+                      #(1|father:mother)+ # Not included because variance=0
+                      # to avoid singular fit
+                      (1|plot)+(1|temp:father)+(1|temp:mother),
+                    data_transplants%>%filter(year==2022&!is.na(FFD_corr)))
+model2_22_LFD_qf<-lmer(LFD_corr~temp+I(temp^2)+
+                      # same as temp+temp_square but better for ggpredict
+                      # (1|father)+ # Not included because variance=0
+                      # to avoid singular fit
+                      (1|mother)+
+                      #(1|father:mother)+ # Not included because variance=0
+                      # to avoid singular fit
+                      (1|plot)+(1|temp:father)+(1|temp:mother),
+                    data_transplants%>%filter(year==2022&!is.na(LFD_corr)))
+model2_22_MeanFD_qf<-lmer(MeanFD~temp+I(temp^2)+
+                         # same as temp+temp_square but better for ggpredict
+                         # (1|father)+ # Not included because variance=0
+                         # to avoid singular fit
+                         (1|mother)+
+                         #(1|father:mother)+ # Not included because variance=0
+                         # to avoid singular fit
+                         (1|plot)+(1|temp:father)+(1|temp:mother),
+                       data_transplants%>%filter(year==2022&!is.na(MeanFD)))
+summary(model2_22_FFD_qf)
+summary(model2_22_LFD_qf)
+summary(model2_22_MeanFD_qf)
+```
+
+#### 2023
+
+```{r}
+model2_23_FFD_qf<-lmer(FFD_corr~temp+I(temp^2)+
+                      # same as temp+temp_square but better for ggpredict
+                      (1|father)+(1|mother)+(1|father:mother)+
+                      (1|plot)+(1|temp:father)+(1|temp:mother),
+                    data_transplants%>%filter(year==2023&!is.na(FFD_corr)))
+model2_23_LFD_qf<-lmer(LFD_corr~temp+I(temp^2)+
+                      # same as temp+temp_square but better for ggpredict
+                      # (1|father)+ # Not included because variance=0
+                      # to avoid singular fit
+                      (1|mother)+(1|father:mother)+
+                      #(1|father:mother)+ # Not included because variance=0
+                      # to avoid singular fit
+                      (1|plot)+(1|temp:father),
+                      #+(1|temp:mother) removed due to singular fit
+                    data_transplants%>%filter(year==2023&!is.na(LFD_corr)))
+model2_23_MeanFD_qf<-lmer(MeanFD~temp+I(temp^2)+
+                         # same as temp+temp_square but better for ggpredict
+                         # (1|father)+ # Not included because variance=0
+                         # to avoid singular fit
+                         (1|mother)+
+                         #(1|father:mother)+ # Not included because variance=0
+                         # to avoid singular fit
+                         (1|plot)+(1|temp:mother),
+                         #(1|temp:father)+  removed due to singular fit
+                       data_transplants%>%filter(year==2023&!is.na(MeanFD)))
+summary(model2_23_FFD_qf)
+summary(model2_23_LFD_qf)
+summary(model2_23_MeanFD_qf)
+```
+
+#### Model diagnostics
+
+```{r}
+plot(simulateResiduals(model2_22_FFD_qf))
+plot(simulateResiduals(model2_22_LFD_qf))
+plot(simulateResiduals(model2_22_MeanFD_qf))
+plot(simulateResiduals(model2_23_FFD_qf))
+plot(simulateResiduals(model2_23_LFD_qf))
+plot(simulateResiduals(model2_23_MeanFD_qf))
+```
+
+Overall deviations from the expected distribution detected. Heteroscedasticity.
+
+### Compare linear and quadratic
+
+#### 2022
+
+```{r}
+r2_nakagawa(model2_22_FFD)
+r2_nakagawa(model2_22_FFD_q)
+r2_nakagawa(model2_22_FFD_qf)
+r2_nakagawa(model2_22_LFD)
+r2_nakagawa(model2_22_LFD_q)
+r2_nakagawa(model2_22_LFD_qf)
+r2_nakagawa(model2_22_MeanFD)
+r2_nakagawa(model2_22_MeanFD_q)
+r2_nakagawa(model2_22_MeanFD_qf)
+```
+
+Conditional R2 (fixed + random effects) only slightly lower in q and qf models. Marginal R2 (fixed effects) much higher in q and qf models.
+
+```{r}
+AIC(model2_22_FFD,model2_22_FFD_q,model2_22_FFD_qf)
+AIC(model2_22_LFD,model2_22_LFD_q,model2_22_LFD_qf)
+AIC(model2_22_MeanFD,model2_22_MeanFD_q,model2_22_MeanFD_qf)
+```
+
+Models with quadratic effect of temperature only in fixed effects are always best. I will use these models so far for 2022. 
+
+#### 2023
+
+```{r}
+r2_nakagawa(model2_23_FFD)
+r2_nakagawa(model2_23_FFD_q)
+r2_nakagawa(model2_23_FFD_qf)
+r2_nakagawa(model2_23_LFD)
+r2_nakagawa(model2_23_LFD_q)
+r2_nakagawa(model2_23_LFD_qf)
+r2_nakagawa(model2_23_MeanFD)
+r2_nakagawa(model2_23_MeanFD_q)
+r2_nakagawa(model2_23_MeanFD_qf)
+```
+
+Conditional R2 (fixed + random effects) only slightly lower in q and qf models. Marginal R2 (fixed effects) much higher in q and qf models.
+
+```{r}
+AIC(model2_23_FFD,model2_23_FFD_q,model2_23_FFD_qf)
+AIC(model2_23_LFD,model2_23_LFD_q,model2_23_LFD_qf)
+AIC(model2_23_MeanFD,model2_23_MeanFD_q,model2_23_MeanFD_qf)
+```
+
+Models with only linear effect of temperature are always best. I will use these models so far for 2023. 
+
+### Bootstrapped models
+
+Bootstrap models with quadratic effect of temperature only in fixed effects for 2022, and with linear effect of temperature for 2023.
+
+Bootstrapped variances will serve to calculate proportions of variance.
+Bootstrapping of fixed effects and p-values will serve to confirm significance of the effect of temperature.
+
+#### 2022
+
+##### Bootstrap variances
+
+This works with type="residual" but not with type="parametric" - I need to do a bit of research on the different types of bootstrap! 
+
+```{r eval=FALSE, include=FALSE}
+model2_22_FFD_qf_boot<-bootstrap(model2_22_FFD_qf,.f=variances,type="residual",
+                              B=1000)
+model2_22_LFD_qf_boot<-bootstrap(model2_22_LFD_qf,.f=variances,type="residual",
+                              B=1000)
+model2_22_MeanFD_qf_boot<-bootstrap(model2_22_MeanFD_qf,.f=variances,
+                                 type="residual",B=1000)
+save(model2_22_FFD_qf_boot,file="output/models/model2_22_FFD_qf_boot.rda")
+save(model2_22_LFD_qf_boot,file="output/models/model2_22_LFD_qf_boot.rda")
+save(model2_22_MeanFD_qf_boot,file="output/models/model2_22_MeanFD_qf_boot.rda")
+```
+
+##### Bootstrap fixed effects
+
+This works with type="residual" but not with type="parametric" - I need to do a bit of research on the different types of bootstrap!
+
+```{r eval=FALSE, include=FALSE}
+model2_22_FFD_qf_boot_fixef<-bootstrap(model2_22_FFD_qf,.f=fixef,
+                                       type="residual",B=1000)
+model2_22_LFD_qf_boot_fixef<-bootstrap(model2_22_LFD_qf,.f=fixef,
+                                       type="residual",B=1000)
+model2_22_MeanFD_qf_boot_fixef<-bootstrap(model2_22_MeanFD_qf,.f=fixef,
+                                          type="residual",B=1000)
+save(model2_22_FFD_qf_boot_fixef,
+     file="output/models/model2_22_FFD_qf_boot_fixef.rda")
+save(model2_22_LFD_qf_boot_fixef,
+     file="output/models/model2_22_LFD_qf_boot_fixef.rda")
+save(model2_22_MeanFD_qf_boot_fixef,
+     file="output/models/model2_22_MeanFD_qf_boot_fixef.rda")
+```
+
+```{r}
+confint(model2_22_FFD_qf_boot_fixef)
+confint(model2_22_LFD_qf_boot_fixef)
+confint(model2_22_MeanFD_qf_boot_fixef)
+```
+
+See which type of confidence intervals we use!
+
+#####  Bootstrap p-values
+
+```{r eval=FALSE, include=FALSE}
+model2_22_FFD_qf_boot_pvals<-bootstrap_pvals(model2_22_FFD_qf,
+                                             type="residual",B=1000)
+#model2_22_LFD_qf_boot_pvals<-bootstrap_pvals(model2_22_LFD_qf,
+#                                             type="residual",B=1000)
+# Errpr, no idea why
+model2_22_MeanFD_qf_boot_pvals<-bootstrap_pvals(model2_22_MeanFD_qf,
+                                                type="residual",B=1000)
+save(model2_22_FFD_qf_boot_pvals,
+     file="output/models/model2_22_FFD_qf_boot_pvals.rda")
+#save(model2_22_LFD_qf_boot_pvals,
+#     file="output/models/model2_22_LFD_qf_boot_pvals.rda")
+save(model2_22_MeanFD_qf_boot_pvals,
+     file="output/models/model2_22_MeanFD_qf_boot_pvals.rda")
+```
+
+```{r}
+model2_22_FFD_qf_boot_pvals
+#model2_22_LFD_qf_boot_pvals
+model2_22_MeanFD_qf_boot_pvals
+```
+
+#### 2023
+
+##### Bootstrap variances
+
+This works with type="residual" but not with type="parametric" - I need to do a bit of research on the different types of bootstrap! 
+
+```{r eval=FALSE, include=FALSE}
+model2_23_FFD_boot<-bootstrap(model2_23_FFD,.f=variances,type="residual",
+                              B=1000)
+model2_23_LFD_boot<-bootstrap(model2_23_LFD,.f=variances,type="residual",
+                              B=1000)
+model2_23_MeanFD_boot<-bootstrap(model2_23_MeanFD,.f=variances,
+                                 type="residual",B=1000)
+save(model2_23_FFD_boot,file="output/models/model2_23_FFD_boot.rda")
+save(model2_23_LFD_boot,file="output/models/model2_23_LFD_boot.rda")
+save(model2_23_MeanFD_boot,file="output/models/model2_23_MeanFD_boot.rda")
+```
+
+##### Bootstrap fixed effects
+
+This works with type="residual" but not with type="parametric" - I need to do a bit of research on the different types of bootstrap!
+
+```{r eval=FALSE, include=FALSE}
+model2_23_FFD_boot_fixef<-bootstrap(model2_23_FFD,.f=fixef,
+                                       type="residual",B=1000)
+model2_23_LFD_boot_fixef<-bootstrap(model2_23_LFD,.f=fixef,
+                                       type="residual",B=1000)
+model2_23_MeanFD_boot_fixef<-bootstrap(model2_23_MeanFD,.f=fixef,
+                                          type="residual",B=1000)
+save(model2_23_FFD_boot_fixef,
+     file="output/models/model2_23_FFD_boot_fixef.rda")
+save(model2_23_LFD_boot_fixef,
+     file="output/models/model2_23_LFD_boot_fixef.rda")
+save(model2_23_MeanFD_boot_fixef,
+     file="output/models/model2_23_MeanFD_boot_fixef.rda")
+```
+
+```{r}
+confint(model2_23_FFD_boot_fixef)
+confint(model2_23_LFD_boot_fixef)
+confint(model2_23_MeanFD_boot_fixef)
+```
+
+See which type of confidence intervals we use!
+
+#####  Bootstrap p-values
+
+```{r eval=FALSE, include=FALSE}
+model2_23_FFD_boot_pvals<-bootstrap_pvals(model2_23_FFD,
+                                             type="residual",B=1000)
+model2_23_LFD_boot_pvals<-bootstrap_pvals(model2_23_LFD,
+                                             type="residual",B=1000)
+#model2_23_MeanFD_boot_pvals<-bootstrap_pvals(model2_23_MeanFD,
+#                                                type="residual",B=1000)
+# Errpr, no idea why
+save(model2_23_FFD_boot_pvals,
+     file="output/models/model2_23_FFD_boot_pvals.rda")
+save(model2_23_LFD_boot_pvals,
+     file="output/models/model2_23_LFD_boot_pvals.rda")
+#save(model2_23_MeanFD_boot_pvals,
+#     file="output/models/model2_23_MeanFD_boot_pvals.rda")
+```
+
+```{r}
+model2_23_FFD_boot_pvals
+model2_23_LFD_boot_pvals
+#model2_23_MeanFD_boot_pvals
+```
+
+### Proportions of variance
+
+#### 2022
+
+```{r}
+# extract variance components
+Variance_22_FFD_temp_boot <- as.data.frame(model2_22_FFD_qf_boot$observed)%>%
+  rownames_to_column(var="grp")%>%
+  mutate(vcov=model2_22_FFD_qf_boot$observed)%>%
+  select(grp,vcov)
+Variance_22_LFD_temp_boot <- as.data.frame(model2_22_LFD_qf_boot$observed)%>%
+  rownames_to_column(var="grp")%>%
+  mutate(vcov=model2_22_LFD_qf_boot$observed)%>%
+  select(grp,vcov)
+Variance_22_MeanFD_temp_boot <- as.data.frame(model2_22_MeanFD_qf_boot$observed)%>%
+  rownames_to_column(var="grp")%>%
+  mutate(vcov=model2_22_MeanFD_qf_boot$observed)%>%
+  select(grp,vcov) 
+# Intra-class correlation
+PropVar_22_FFD_temp_boot <- Variance_22_FFD_temp_boot%>%
+  mutate(propvar=vcov/sum(vcov))%>%mutate(variable="FFD")
+PropVar_22_LFD_temp_boot <- Variance_22_LFD_temp_boot%>%
+  mutate(propvar=vcov/sum(vcov))%>%mutate(variable="LFD")
+PropVar_22_MeanFD_temp_boot <- Variance_22_MeanFD_temp_boot%>%
+  mutate(propvar=vcov/sum(vcov))%>%mutate(variable="MeanFD")
+# Proportional variance
+Props_var_22_temp_boot<-rbind(PropVar_22_FFD_temp_boot,PropVar_22_LFD_temp_boot,
+                              PropVar_22_MeanFD_temp_boot)
+```
+
+#### 2023
+
+```{r}
+# extract variance components
+Variance_23_FFD_temp_boot <- as.data.frame(model2_23_FFD_boot$observed)%>%
+  rownames_to_column(var="grp")%>%
+  mutate(vcov=model2_23_FFD_boot$observed)%>%
+  select(grp,vcov)
+Variance_23_LFD_temp_boot <- as.data.frame(model2_23_LFD_boot$observed)%>%
+  rownames_to_column(var="grp")%>%
+  mutate(vcov=model2_23_LFD_boot$observed)%>%
+  select(grp,vcov)
+Variance_23_MeanFD_temp_boot <- as.data.frame(model2_23_MeanFD_boot$observed)%>%
+  rownames_to_column(var="grp")%>%
+  mutate(vcov=model2_23_MeanFD_boot$observed)%>%
+  select(grp,vcov) 
+# Intra-class correlation
+PropVar_23_FFD_temp_boot <- Variance_23_FFD_temp_boot%>%
+  mutate(propvar=vcov/sum(vcov))%>%mutate(variable="FFD")
+PropVar_23_LFD_temp_boot <- Variance_23_LFD_temp_boot%>%
+  mutate(propvar=vcov/sum(vcov))%>%mutate(variable="LFD")
+PropVar_23_MeanFD_temp_boot <- Variance_23_MeanFD_temp_boot%>%
+  mutate(propvar=vcov/sum(vcov))%>%mutate(variable="MeanFD")
+# Proportional variance
+Props_var_23_temp_boot<-rbind(PropVar_23_FFD_temp_boot,PropVar_23_LFD_temp_boot,
+                              PropVar_23_MeanFD_temp_boot)
+```
+
+#### Comparison both years
+
+```{r}
+grid.arrange(
+  ggplot(Props_var_22_temp_boot,aes(x=variable,y=propvar,fill=grp))+geom_col()+
+    ggtitle("2022")+theme(legend.position="top"),
+  ggplot(Props_var_23_temp_boot,aes(x=variable,y=propvar,fill=grp))+geom_col()+
+    ggtitle("2023")+theme(legend.position="top"),
+  ncol=2)
+```
+
+2022: Very low proportions of variance explained by temp:father, higher proportion of variance explained by temp:mother (larger in LFD and MeanFD). Most variance explained by plot.
+
+2023: Higher proportions of variance explained by temp:father for LFD and MeanFD. temp:mother only explains some for FFD. Most variance explained by plot.
+
+### Heritability and maternal effects
+
+#### 2022
+
+```{r}
+# h^2 (paternal effects)
+her_22_FFD_temp<-4*subset(PropVar_22_FFD_temp_boot,grp=="temp:father")[3]
+her_22_LFD_temp<-4*subset(PropVar_22_LFD_temp_boot,grp=="temp:father")[3]
+her_22_MeanFD_temp<-4*subset(PropVar_22_MeanFD_temp_boot,grp=="temp:father")[3]
+# Because the additive genetic variance, VA,
+# is expected to be four times the among pollen‐donor variance 
+# (Falconer & Mackay, 1996; Lynch & Walsh, 1998)
+her_22_temp<-data.frame(value=rbind(her_22_FFD_temp,her_22_LFD_temp,
+                                    her_22_MeanFD_temp))%>%
+  mutate(variable=c("FFD","LFD","MeanFD"),
+         effect="Heritability")%>%
+  rename(value=propvar)
+```
+
+```{r}
+# maternal effects
+
+# Maternal - paternal
+# ----------------------
+# summed effects
+
+# Because the pollen‐recipient variance component contains a combination of
+# genetic and environmental effects, we subtracted the additive genetic 
+# (pollen donor) component from the pollen-recipient variance component
+# before dividing the resulting estimate by VP to estimate 
+# m2 (m2 = (Vpollen recipient − Vpollen donor)/VP).
+
+mat_22_FFD_temp<-(subset(Variance_22_FFD_temp_boot,grp=="temp:mother")[2]-
+                  subset(Variance_22_FFD_temp_boot,grp=="temp:father")[2])/
+  Variance_22_FFD_temp_boot%>%summarise(sum(vcov))
+mat_22_LFD_temp<-(subset(Variance_22_LFD_temp_boot,grp=="temp:mother")[2]-
+                  subset(Variance_22_LFD_temp_boot,grp=="temp:father")[2])/
+  Variance_22_LFD_temp_boot%>%summarise(sum(vcov))
+mat_22_MeanFD_temp<-(subset(Variance_22_MeanFD_temp_boot,grp=="temp:mother")[2]-
+                  subset(Variance_22_MeanFD_temp_boot,grp=="temp:father")[2])/
+  Variance_22_MeanFD_temp_boot%>%summarise(sum(vcov))
+mat_22_temp<-data.frame(value=rbind(mat_22_FFD_temp,mat_22_LFD_temp,
+                                    mat_22_MeanFD_temp))%>%
+  mutate(variable=c("FFD","LFD","MeanFD"),
+         effect="Maternal effects")%>%
+  rename(value=vcov)
+```
+
+```{r}
+her_mat_22_temp<-rbind(her_22_temp,mat_22_temp)
+her_mat_22_temp
+```
+
+#### 2023
+
+```{r}
+# h^2 (paternal effects)
+her_23_FFD_temp<-4*subset(PropVar_23_FFD_temp_boot,grp=="temp:father")[3]
+her_23_LFD_temp<-4*subset(PropVar_23_LFD_temp_boot,grp=="temp:father")[3]
+her_23_MeanFD_temp<-4*subset(PropVar_23_MeanFD_temp_boot,grp=="temp:father")[3]
+# Because the additive genetic variance, VA,
+# is expected to be four times the among pollen‐donor variance 
+# (Falconer & Mackay, 1996; Lynch & Walsh, 1998)
+her_23_temp<-data.frame(value=rbind(her_23_FFD_temp,her_23_LFD_temp,
+                                    her_23_MeanFD_temp))%>%
+  mutate(variable=c("FFD","LFD","MeanFD"),
+         effect="Heritability")%>%
+  rename(value=propvar)
+```
+
+```{r}
+# maternal effects
+
+# Maternal - paternal
+# ----------------------
+# summed effects
+
+# Because the pollen‐recipient variance component contains a combination of
+# genetic and environmental effects, we subtracted the additive genetic 
+# (pollen donor) component from the pollen-recipient variance component
+# before dividing the resulting estimate by VP to estimate 
+# m2 (m2 = (Vpollen recipient − Vpollen donor)/VP).
+
+mat_23_FFD_temp<-(subset(Variance_23_FFD_temp_boot,grp=="temp:mother")[2]-
+                  subset(Variance_23_FFD_temp_boot,grp=="temp:father")[2])/
+  Variance_23_FFD_temp_boot%>%summarise(sum(vcov))
+mat_23_LFD_temp<-(0-
+                  subset(Variance_23_LFD_temp_boot,grp=="temp:father")[2])/
+  Variance_23_LFD_temp_boot%>%summarise(sum(vcov))
+mat_23_MeanFD_temp<-(subset(Variance_23_MeanFD_temp_boot,grp=="temp:mother")[2]-
+                  subset(Variance_23_MeanFD_temp_boot,grp=="temp:father")[2])/
+  Variance_23_MeanFD_temp_boot%>%summarise(sum(vcov))
+mat_23_temp<-data.frame(value=rbind(mat_23_FFD_temp,mat_23_LFD_temp,
+                                    mat_23_MeanFD_temp))%>%
+  mutate(variable=c("FFD","LFD","MeanFD"),
+         effect="Maternal effects")%>%
+  rename(value=vcov)
+```
+
+```{r}
+her_mat_23_temp<-rbind(her_23_temp,mat_23_temp)
+her_mat_23_temp
+```
+
+#### Comparison both years
+
+```{r}
+grid.arrange(
+  ggplot(her_mat_22_temp,aes(x=variable,y=value,fill=effect))+
+    geom_bar(stat="identity",position="dodge")+ggtitle("2022")+
+    theme(legend.position="top"),
+  ggplot(her_mat_23_temp,aes(x=variable,y=value,fill=effect))+
+    geom_bar(stat="identity",position="dodge")+ggtitle("2023")+
+    theme(legend.position="top"),
+  ncol=2)
+```
+
+Heritabilities much higher in 2023, and maternal effects much higher in 2022...
+
+### Likelihood ratio tests for variance components
+
+Based on original models, not on bootstrap.
+
+(These results could be used to add asterisks to the previous plot).
+
+```{r}
+ranova(model2_22_FFD_qf)
+ranova(model2_22_LFD_qf)
+ranova(model2_22_MeanFD_qf)
+ranova(model2_23_FFD)
+ranova(model2_23_LFD)
+ranova(model2_23_MeanFD)
+```
+
+
+Temp:father always NS, temp:mother significant only for LFD and MeanFD in 2022.
+
+### Figures effect of temp
+
+Main effect of temperature (quadratic) significant for FFD, LFD and MeanFD in 2022.
+In 2023, NS for FFD, significant for LFD and MeanFD (but close to 0.05). Bootstrapped p-value NS for LFD, gives error for MeanFD (see above)
+
+```{r}
+plot(ggpredict(model2_22_FFD_qf,terms="temp[all]"),add.data=T)
+plot(ggpredict(model2_22_LFD_qf,terms="temp[all]"),add.data=T)
+plot(ggpredict(model2_22_MeanFD_qf,terms="temp[all]"),add.data=T)
+plot(ggpredict(model2_23_FFD,terms="temp[all]"),add.data=T)
+plot(ggpredict(model2_23_LFD,terms="temp[all]"),add.data=T)
+plot(ggpredict(model2_23_MeanFD,terms="temp[all]"),add.data=T)
+```
+
+### Copmarison all heritabilities
+
+```{r}
+her_mat_all<-rbind(
+  rbind(her_mat_22%>%select(-rowname)%>%mutate(year=2022),
+        her_mat_23%>%select(-rowname)%>%mutate(year=2023))%>%
+    mutate(type="Mean response"),
+  rbind(her_mat_22_temp%>%mutate(year=2022),
+        her_mat_23_temp%>%mutate(year=2023))%>%
+    mutate(type="Plasticity")
+  )
+```
+
+```{r fig.height=6, fig.width=6}
+ggplot(her_mat_all,
+       aes(x=variable,y=value,fill=type))+
+  geom_bar(stat="identity",position="dodge")+
+  facet_grid(rows=vars(effect),cols=vars(year))+
+  theme(legend.position="top")
+```
+
+Very high heritabilities for plasticity in 2023. Why?
+
+## C) Genetic differentiation in mean responses (Hypothesis 1 in greenhouse paper)
+
+### Models
+
+#### 2022
+
+```{r}
+model3_22_FFD<-lmer(FFD_corr~temp_father+temp_mother+
+                   #(1|father)+ # Not included because variance=0
+                   # to avoid singular fit
+                   (1|mother)+
+                   #(1|father:mother)+ # Not included because variance=0
+                   # to avoid singular fit
+                   (1|plot),
+                 data_transplants%>%filter(year==2022&!is.na(FFD_corr)))
+model3_22_LFD<-lmer(LFD_corr~temp_father+temp_mother+
+                   (1|father)+(1|mother)+
+                   #(1|father:mother)+ # Not included because variance=0
+                   # to avoid singular fit
+                   (1|plot),
+                 data_transplants%>%filter(year==2022&!is.na(LFD_corr)))
+model3_22_MeanFD<-lmer(MeanFD~temp_father+temp_mother+
+                      (1|father)+(1|mother)+
+                      #(1|father:mother)+ # Not included because variance=0
+                      # to avoid singular fit
+                      (1|plot),
+                    data_transplants%>%filter(year==2022&!is.na(MeanFD)))
+summary(model3_22_FFD)
+summary(model3_22_LFD)
+summary(model3_22_MeanFD)
+```
+
+All  effects of orgin temperatures are NS. 
+
+#### 2023
+
+```{r}
+model3_23_FFD<-lmer(FFD_corr~temp_father+temp_mother+
+                   (1|father)+(1|mother)+
+                   #(1|father:mother)+ # Not included because variance=0
+                   # to avoid singular fit
+                   (1|plot),
+                 data_transplants%>%filter(year==2023&!is.na(FFD_corr)))
+model3_23_LFD<-lmer(LFD_corr~temp_father+temp_mother+
+                   #(1|father)+# Not included because variance=0
+                   # to avoid singular fit
+                     (1|mother)+
+                   #(1|father:mother)+ # Not included because variance=0
+                   # to avoid singular fit
+                   (1|plot),
+                 data_transplants%>%filter(year==2023&!is.na(FFD_corr)))
+model3_23_MeanFD<-lmer(MeanFD~temp_father+temp_mother+
+                         #(1|father)+# Not included because variance=0
+                         # to avoid singular fit
+                         (1|mother)+
+                      #(1|father:mother)+ # Not included because variance=0
+                      # to avoid singular fit
+                      (1|plot),
+                    data_transplants%>%filter(year==2023&!is.na(FFD_corr)))
+summary(model3_23_FFD)
+summary(model3_23_LFD)
+summary(model3_23_MeanFD)
+```
+
+All effects of origin temperatures are NS. 
+
+#### Model diagnostics
+
+```{r}
+plot(simulateResiduals(model3_22_FFD))
+plot(simulateResiduals(model3_22_LFD))
+plot(simulateResiduals(model3_22_MeanFD))
+plot(simulateResiduals(model3_23_FFD))
+plot(simulateResiduals(model3_23_LFD))
+plot(simulateResiduals(model3_23_MeanFD))
+```
+
+Overall deviations from the expected distribution detected. Heteroscedasticity.
+
+#### Bootstrapped models
+
+Bootstrapping of fixed effects and p-values will serve to check significance of the effects of origin temperatures.
+
+##### 2022
+
+###### Bootstrap fixed effects
+
+```{r eval=FALSE, include=FALSE}
+model3_22_FFD_boot_fixef<-bootstrap(model3_22_FFD,type="residual",B=1000)
+model3_22_LFD_boot_fixef<-bootstrap(model3_22_LFD,type="residual",B=1000)
+model3_22_MeanFD_boot_fixef<-bootstrap(model3_22_MeanFD,type="residual",B=1000)
+save(model3_22_FFD_boot_fixef,
+     file="output/models/model3_22_FFD_boot_fixef.rda")
+save(model3_22_LFD_boot_fixef,
+     file="output/models/model3_22_LFD_boot_fixef.rda")
+save(model3_22_MeanFD_boot_fixef,
+     file="output/models/model3_22_MeanFD_boot_fixef.rda")
+```
+
+```{r}
+confint(model3_22_FFD_boot_fixef)
+confint(model3_22_LFD_boot_fixef)
+confint(model3_22_MeanFD_boot_fixef)
+```
+
+###### Bootstrap p-values
+
+```{r eval=FALSE, include=FALSE}
+model3_22_FFD_boot_pvals<-bootstrap_pvals(model3_22_FFD,type="residual",
+                                       B=1000)
+model3_22_LFD_boot_pvals<-bootstrap_pvals(model3_22_LFD,type="residual",
+                                       B=1000)
+model3_22_MeanFD_boot_pvals<-bootstrap_pvals(model3_22_MeanFD,type="residual",
+                                          B=1000)
+save(model3_22_FFD_boot_pvals,
+     file="output/models/model3_22_FFD_boot_pvals.rda")
+save(model3_22_LFD_boot_pvals,
+     file="output/models/model3_22_LFD_boot_pvals.rda")
+save(model3_22_MeanFD_boot_pvals,
+     file="output/models/model3_22_MeanFD_boot_pvals.rda")
+```
+
+```{r}
+model3_22_FFD_boot_pvals
+model3_22_LFD_boot_pvals
+model3_22_MeanFD_boot_pvals
+```
+
+All effects of orgin temperatures are still NS. 
+
+##### 2023
+
+###### Bootstrap fixed effects
+
+```{r eval=FALSE, include=FALSE}
+model3_23_FFD_boot_fixef<-bootstrap(model3_23_FFD,type="residual",B=1000)
+model3_23_LFD_boot_fixef<-bootstrap(model3_23_LFD,type="residual",B=1000)
+model3_23_MeanFD_boot_fixef<-bootstrap(model3_23_MeanFD,type="residual",B=1000)
+save(model3_23_FFD_boot_fixef,
+     file="output/models/model3_23_FFD_boot_fixef.rda")
+save(model3_23_LFD_boot_fixef,
+     file="output/models/model3_23_LFD_boot_fixef.rda")
+save(model3_23_MeanFD_boot_fixef,
+     file="output/models/model3_23_MeanFD_boot_fixef.rda")
+```
+
+```{r}
+confint(model3_23_FFD_boot_fixef)
+confint(model3_23_LFD_boot_fixef)
+confint(model3_23_MeanFD_boot_fixef)
+```
+
+###### Bootstrap p-values
+
+```{r eval=FALSE, include=FALSE}
+model3_23_FFD_boot_pvals<-bootstrap_pvals(model3_23_FFD,type="residual",
+                                       B=1000)
+model3_23_LFD_boot_pvals<-bootstrap_pvals(model3_23_LFD,type="residual",
+                                       B=1000)
+model3_23_MeanFD_boot_pvals<-bootstrap_pvals(model3_23_MeanFD,type="residual",
+                                          B=1000)
+save(model3_23_FFD_boot_pvals,
+     file="output/models/model3_23_FFD_boot_pvals.rda")
+save(model3_23_LFD_boot_pvals,
+     file="output/models/model3_23_LFD_boot_pvals.rda")
+save(model3_23_MeanFD_boot_pvals,
+     file="output/models/model3_23_MeanFD_boot_pvals.rda")
+```
+
+```{r}
+model3_23_FFD_boot_pvals
+model3_23_LFD_boot_pvals
+model3_23_MeanFD_boot_pvals
+```
+
+All effects of orgin temperatures are still NS. 
+
+### Proportions of variance
+
+Proportion of variance explained by temperature of origin of fathers and mothers = proportion of variance explained by fixed effects: marginal R2.
+
+#### 2022
+
+```{r}
+PropVar_22_FFD_temp_origin<-as.numeric(r2_nakagawa(model3_22_FFD)$R2_marginal)
+PropVar_22_LFD_temp_origin<-as.numeric(r2_nakagawa(model3_22_LFD)$R2_marginal)
+PropVar_22_MeanFD_temp_origin<-as.numeric(r2_nakagawa(model3_22_MeanFD)$R2_marginal)
+Props_var_22_temp_origin<-data.frame(
+  values=c(PropVar_22_FFD_temp_origin,PropVar_22_LFD_temp_origin,
+           PropVar_22_MeanFD_temp_origin),variable=c("FFD","LFD","MeanFD"))
+```
+
+```{r}
+ggplot(Props_var_22_temp_origin,aes(x=variable,y=values))+
+  geom_bar(stat="identity",position="dodge")
+```
+
+Temperature mother and father: partR2 - DO?
+
+#### 2022
+
+```{r}
+PropVar_23_FFD_temp_origin<-as.numeric(r2_nakagawa(model3_23_FFD)$R2_marginal)
+PropVar_23_LFD_temp_origin<-as.numeric(r2_nakagawa(model3_23_LFD)$R2_marginal)
+PropVar_23_MeanFD_temp_origin<-as.numeric(r2_nakagawa(model3_23_MeanFD)$R2_marginal)
+Props_var_23_temp_origin<-data.frame(
+  values=c(PropVar_23_FFD_temp_origin,PropVar_23_LFD_temp_origin,
+           PropVar_23_MeanFD_temp_origin),variable=c("FFD","LFD","MeanFD"))
+```
+
+```{r}
+ggplot(Props_var_23_temp_origin,aes(x=variable,y=values))+
+  geom_bar(stat="identity",position="dodge")
+```
+
+Temperature mother and father: partR2 - DO?
+
+### Models mid-parental values
+
+```{r}
+data_transplants<-data_transplants%>%
+  mutate(mean_temp_parents=(temp_mother+temp_father)/2)
+```
+
+#### 2022
+
+```{r}
+model3_22_FFD_midP<-lmer(FFD_corr~mean_temp_parents+
+                        #(1|father)+ # Not included because variance=0
+                        # to avoid singular fit
+                        (1|mother)+
+                        #(1|father:mother)+ # Not included because variance=0
+                        # to avoid singular fit
+                        (1|plot),
+                       data_transplants%>%filter(year==2022&!is.na(FFD_corr)))
+model3_22_LFD_midP<-lmer(LFD_corr~mean_temp_parents+
+                        (1|father)+(1|mother)+
+                        #(1|father:mother)+ # Not included because variance=0
+                        # to avoid singular fit
+                        (1|plot),
+                       data_transplants%>%filter(year==2022&!is.na(LFD_corr)))
+model3_22_MeanFD_midP<-lmer(MeanFD~mean_temp_parents+
+                           (1|father)+(1|mother)+
+                           #(1|father:mother)+ # Not included because variance=0
+                           # to avoid singular fit
+                           (1|plot),
+                          data_transplants%>%filter(year==2022&!is.na(MeanFD)))
+summary(model3_22_FFD_midP)
+summary(model3_22_LFD_midP)
+summary(model3_22_MeanFD_midP)
+```
+
+Mid-parental temperature always NS.
+
+#### 2023
+
+```{r}
+model3_23_FFD_midP<-lmer(FFD_corr~mean_temp_parents+
+                        #(1|father)+ # Not included because variance=0
+                        # to avoid singular fit
+                        (1|mother)+
+                        #(1|father:mother)+ # Not included because variance=0
+                        # to avoid singular fit
+                        (1|plot),
+                       data_transplants%>%filter(year==2023&!is.na(FFD_corr)))
+model3_23_LFD_midP<-lmer(LFD_corr~mean_temp_parents+
+                        (1|father)+(1|mother)+
+                        #(1|father:mother)+ # Not included because variance=0
+                        # to avoid singular fit
+                        (1|plot),
+                       data_transplants%>%filter(year==2023&!is.na(LFD_corr)))
+model3_23_MeanFD_midP<-lmer(MeanFD~mean_temp_parents+
+                           #(1|father)+
+                             (1|mother)+
+                           #(1|father:mother)+ # Not included because variance=0
+                           # to avoid singular fit
+                           (1|plot),
+                          data_transplants%>%filter(year==2023&!is.na(MeanFD)))
+summary(model3_23_FFD_midP)
+summary(model3_23_LFD_midP)
+summary(model3_23_MeanFD_midP)
+```
+
+Mid-parental temperature always NS.
+
+#### Model diagnostics
+
+```{r}
+plot(simulateResiduals(model3_22_FFD_midP))
+plot(simulateResiduals(model3_22_LFD_midP))
+plot(simulateResiduals(model3_22_MeanFD_midP))
+plot(simulateResiduals(model3_23_FFD_midP))
+plot(simulateResiduals(model3_23_LFD_midP))
+plot(simulateResiduals(model3_23_MeanFD_midP))
+```
+
+Overall deviations from the expected distribution detected. Heteroscedasticity.
+
+#### Bootstrapped models: TO DO?
+
+## D) Genetic differentiation in plasticities (Hypothesis 2 in greenhouse paper)
+
+### Models
+
+#### 2022
+
+```{r}
+model4_22_FFD<-lmer(FFD_corr~temp*(temp_father+temp_mother)+
+                   (1|father)+(1|mother)+
+                   #(1|father:mother)+ # Not included because variance=0
+                   # to avoid singular fit
+                   (1|plot),
+                 data_transplants%>%filter(year==2022&!is.na(FFD_corr)))
+model4_22_LFD<-lmer(LFD_corr~temp*(temp_father+temp_mother)+
+                   (1|father)+(1|mother)+
+                   #(1|father:mother)+ # Not included because variance=0
+                   # to avoid singular fit
+                   (1|plot),
+                 data_transplants%>%filter(year==2022&!is.na(LFD_corr)))
+model4_22_MeanFD<-lmer(MeanFD~temp*(temp_father+temp_mother)+
+                      (1|father)+(1|mother)+
+                      #(1|father:mother)+ # Not included because variance=0
+                      # to avoid singular fit
+                      +(1|plot),
+                    data_transplants%>%filter(year==2022&!is.na(MeanFD)))
+summary(model4_22_FFD)
+summary(model4_22_LFD)
+summary(model4_22_MeanFD)
+```
+
+Interaction temp:temp_father is significant (P = 0.04251) for FFD. There are temperature-related differences among fathers in the response to temperature of the planting site = Genetic differentiation related to origin temperature of the father in the slope of RNs?
+
+```{r}
+plot(ggpredict(model4_22_FFD,terms=c("temp_father")))
+```
+
+The sign of temp_father goes in the opposite direction as expected! (earlier FFD at a given temperature in individuals with fathers from warmer soils). But maybe we should not interpret this main effect, as the interaction with temp is significant??
+
+```{r}
+plot(ggpredict(model4_22_FFD,terms=c("temp_father","temp[quart]")))
+```
+
+As predicted: differences in phenology between high and low soil temperatures are predicted to be smaller for plants with fathers from warm soils than for plants with fathers from colder soils. 
+
+#### 2023
+
+```{r}
+model4_23_FFD<-lmer(FFD_corr~temp*(temp_father+temp_mother)+
+                   (1|father)+(1|mother)+
+                   (1|father:mother)+ # Not included because variance=0
+                   # to avoid singular fit
+                   (1|plot),
+                 data_transplants%>%filter(year==2023&!is.na(FFD_corr)))
+model4_23_LFD<-lmer(LFD_corr~temp*(temp_father+temp_mother)+
+                   #(1|father)+# Not included because variance=0
+                   # to avoid singular fit
+                     (1|mother)+
+                   (1|father:mother)+ 
+                   (1|plot),
+                 data_transplants%>%filter(year==2023&!is.na(LFD_corr)))
+model4_23_MeanFD<-lmer(MeanFD~temp*(temp_father+temp_mother)+
+                      (1|father)+(1|mother)+
+                      (1|father:mother)+ 
+                      +(1|plot),
+                    data_transplants%>%filter(year==2023&!is.na(MeanFD)))
+summary(model4_23_FFD)
+summary(model4_23_LFD)
+summary(model4_23_MeanFD)
+```
+
+
+```{r}
+plot(ggpredict(model4_23_FFD,terms=c("temp_mother","temp[quart]")))
+plot(ggpredict(model4_23_LFD,terms=c("temp_mother","temp[quart]")))
+plot(ggpredict(model4_23_MeanFD,terms=c("temp_mother","temp[quart]")))
+```
+
+Predicted: differences in phenology between high and low soil temperatures are predicted to be smaller for plants with mothers from warm soils than for plants with mothers from colder soils. 
+But the effect goes in the opposite direction as expected! Why?
+
+#### Model diagnostics
+
+```{r}
+plot(simulateResiduals(model4_22_FFD))
+plot(simulateResiduals(model4_22_LFD))
+plot(simulateResiduals(model4_22_MeanFD))
+plot(simulateResiduals(model4_23_FFD))
+plot(simulateResiduals(model4_23_LFD))
+plot(simulateResiduals(model4_23_MeanFD))
+```
+
+Overall deviations from the expected distribution detected. Heteroscedasticity.
+
+#### Bootstrapped models
+
+Bootstrapping of fixed effects and p-values will serve to check significance of the effects of origin temperatures.
+
+##### 2022
+
+###### Bootstrap fixed effects
+
+```{r eval=FALSE, include=FALSE}
+model4_22_FFD_boot_fixef<-bootstrap(model4_22_FFD,type="residual",B=1000)
+model4_22_LFD_boot_fixef<-bootstrap(model4_22_LFD,type="residual",B=1000)
+model4_22_MeanFD_boot_fixef<-bootstrap(model4_22_MeanFD,type="residual",B=1000)
+save(model4_22_FFD_boot_fixef,
+     file="output/models/model4_22_FFD_boot_fixef.rda")
+save(model4_22_LFD_boot_fixef,
+     file="output/models/model4_22_LFD_boot_fixef.rda")
+save(model4_22_MeanFD_boot_fixef,
+     file="output/models/model4_22_MeanFD_boot_fixef.rda")
+```
+
+```{r}
+confint(model4_22_FFD_boot_fixef)
+confint(model4_22_LFD_boot_fixef)
+confint(model4_22_MeanFD_boot_fixef)
+```
+
+###### RUN from here w 100 iter: Bootstrap p-values
+
+```{r eval=FALSE, include=FALSE}
+#model4_22_FFD_boot_pvals<-bootstrap_pvals(model4_22_FFD,type="residual",
+#                                       B=1000)
+# Errpr, no idea why
+model4_22_LFD_boot_pvals<-bootstrap_pvals(model4_22_LFD,type="residual",
+                                       B=100)
+model4_22_MeanFD_boot_pvals<-bootstrap_pvals(model4_22_MeanFD,type="residual",
+                                          B=100)
+#save(model4_22_FFD_boot_pvals,
+#     file="output/models/model4_22_FFD_boot_pvals.rda")
+save(model4_22_LFD_boot_pvals,
+     file="output/models/model4_22_LFD_boot_pvals.rda")
+save(model4_22_MeanFD_boot_pvals,
+     file="output/models/model4_22_MeanFD_boot_pvals.rda")
+```
+
+```{r}
+#model4_22_FFD_boot_pvals
+model4_22_LFD_boot_pvals
+model4_22_MeanFD_boot_pvals
+```
+
+Interaction temp:temp_father still significant for FFD with p = 0.0480. 
+
+##### 2023
+
+###### Bootstrap fixed effects
+
+```{r eval=FALSE, include=FALSE}
+model4_23_FFD_boot_fixef<-bootstrap(model4_23_FFD,type="residual",B=1000)
+model4_23_LFD_boot_fixef<-bootstrap(model4_23_LFD,type="residual",B=1000)
+model4_23_MeanFD_boot_fixef<-bootstrap(model4_23_MeanFD,type="residual",B=1000)
+save(model4_23_FFD_boot_fixef,
+     file="output/models/model4_23_FFD_boot_fixef.rda")
+save(model4_23_LFD_boot_fixef,
+     file="output/models/model4_23_LFD_boot_fixef.rda")
+save(model4_23_MeanFD_boot_fixef,
+     file="output/models/model4_23_MeanFD_boot_fixef.rda")
+```
+
+```{r}
+confint(model4_23_FFD_boot_fixef)
+confint(model4_23_LFD_boot_fixef)
+confint(model4_23_MeanFD_boot_fixef)
+```
+
+###### RUN w 1000 iter: Bootstrap p-values
+
+```{r eval=FALSE, include=FALSE}
+model4_23_FFD_boot_pvals<-bootstrap_pvals(model4_23_FFD,type="residual",
+                                       B=100)
+model4_23_LFD_boot_pvals<-bootstrap_pvals(model4_23_LFD,type="residual",
+                                       B=100)
+#model4_23_MeanFD_boot_pvals<-bootstrap_pvals(model4_23_MeanFD,type="residual",
+#                                          B=100)
+# Error
+save(model4_23_FFD_boot_pvals,
+     file="output/models/model4_23_FFD_boot_pvals.rda")
+save(model4_23_LFD_boot_pvals,
+     file="output/models/model4_23_LFD_boot_pvals.rda")
+#save(model4_23_MeanFD_boot_pvals,
+#     file="output/models/model4_23_MeanFD_boot_pvals.rda")
+```
+
+```{r}
+model4_23_FFD_boot_pvals
+model4_23_LFD_boot_pvals
+#model4_23_MeanFD_boot_pvals
+```
+
+### Models mid-parental values
+
+#### 2022
+
+```{r}
+model4_22_FFD_midP<-lmer(FFD_corr~temp*mean_temp_parents+
+                        (1|father)+(1|mother)+
+                        #(1|father:mother)+ # Not included because variance=0
+                        # to avoid singular fit
+                        (1|plot),
+                      data_transplants%>%filter(year==2022&!is.na(FFD_corr)))
+model4_22_LFD_midP<-lmer(LFD_corr~temp*mean_temp_parents+
+                        (1|father)+(1|mother)+
+                        #(1|father:mother)+ # Not included because variance=0
+                        # to avoid singular fit
+                        (1|plot),
+                    data_transplants%>%filter(year==2022&!is.na(LFD_corr)))
+model4_22_MeanFD_midP<-lmer(MeanFD~temp*mean_temp_parents+
+                           (1|father)+(1|mother)+
+                           #(1|father:mother)+ # Not included because variance=0
+                           # to avoid singular fit
+                           (1|plot),
+                         data_transplants%>%filter(year==2022&!is.na(MeanFD)))
+summary(model4_22_FFD_midP)
+summary(model4_22_LFD_midP)
+summary(model4_22_MeanFD_midP)
+```
+
+```{r}
+plot(ggpredict(model4_22_FFD_midP,terms=c("mean_temp_parents","temp[quart]")))
+plot(ggpredict(model4_22_LFD_midP,terms=c("mean_temp_parents","temp[quart]")))
+plot(ggpredict(model4_22_MeanFD_midP,terms=c("mean_temp_parents","temp[quart]"))) # Marginally *
+```
+
+As predicted: differences in phenology between high and low soil temperatures are predicted to be smaller for plants with parents from warm soils than for plants with parents from colder soils. 
+
+#### 2023
+
+```{r}
+model4_23_FFD_midP<-lmer(FFD_corr~temp*mean_temp_parents+
+                        (1|father)+(1|mother)+
+                        (1|father:mother)+ # Not included because variance=0
+                        # to avoid singular fit
+                        (1|plot),
+                      data_transplants%>%filter(year==2023&!is.na(FFD_corr)))
+model4_23_LFD_midP<-lmer(LFD_corr~temp*mean_temp_parents+
+                        #(1|father)+# Not included because variance=0
+                        # to avoid singular fit
+                          (1|mother)+
+                        (1|father:mother)+ 
+                        (1|plot),
+                    data_transplants%>%filter(year==2023&!is.na(LFD_corr)))
+model4_23_MeanFD_midP<-lmer(MeanFD~temp*mean_temp_parents+
+                           #(1|father)+# Not included because variance=0
+                           # to avoid singular fit
+                             (1|mother)+
+                           (1|father:mother)+ 
+                           (1|plot),
+                         data_transplants%>%filter(year==2023&!is.na(MeanFD)))
+summary(model4_23_FFD_midP)
+summary(model4_23_LFD_midP)
+summary(model4_23_MeanFD_midP)
+```
+
+```{r}
+plot(ggpredict(model4_23_FFD_midP,terms=c("mean_temp_parents","temp[quart]")))
+plot(ggpredict(model4_23_LFD_midP,terms=c("mean_temp_parents","temp[quart]")))
+plot(ggpredict(model4_23_MeanFD_midP,terms=c("mean_temp_parents","temp[quart]")))
+```
+
+Predicted: differences in phenology between high and low soil temperatures are predicted to be smaller for plants with parents from warm soils than for plants with parents from colder soils. 
+But the effect goes in the opposite direction as expected! Why?
+
+#### Model diagnostics
+
+```{r}
+plot(simulateResiduals(model4_22_FFD_midP))
+plot(simulateResiduals(model4_22_LFD_midP))
+plot(simulateResiduals(model4_22_MeanFD_midP))
+plot(simulateResiduals(model4_23_FFD_midP))
+plot(simulateResiduals(model4_23_LFD_midP))
+plot(simulateResiduals(model4_23_MeanFD_midP))
+```
+
+Overall deviations from the expected distribution detected. Heteroscedasticity.
+
+#### Bootstrapped models: TO DO?
+
+## Models genetic differentiation with breeding values?
+
+# PREDICTION 2
+
+"There is temperature-dependent phenotypic selection on flowering time, and selection favors an earlier phenology at low soil temperatures but a later phenology at high temperatures."
+
+## Fitness
+
+Fitness = total number of seeds (n_tot_seeds).
+
+```{r}
+ggplot(data_transplants,aes(x=n_tot_seed))+
+  geom_histogram(color="black",fill="white")+
+  my_theme()
+ggplot(data_transplants,aes(x=tot_fl_bodies))+
+  geom_histogram(color="black",fill="white")+
+  my_theme()
+ggplot(data_transplants,aes(x=log(tot_fl_bodies)))+
+  geom_histogram(color="black",fill="white")+
+  my_theme()
+```
+
+### Models both years
+
+#### With n flowers as condition trait
+
+```{r}
+model_phensel_FFD_f<-lmer(fitness_rel~FFD_std*temp+FFD_std:year+temp:year+
+                            FFD_std:temp:year+n_fl_std+(1|unique_id)+(1|plot),
+                           data_transplants)
+model_phensel_LFD_f<-lmer(fitness_rel~LFD_std*temp+LFD_std:year+temp:year+
+                            LFD_std:temp:year+n_fl_std+(1|unique_id)+(1|plot),
+                           data_transplants)
+model_phensel_MeanFD_f<-lmer(fitness_rel~MeanFD_std*temp+MeanFD_std:year+
+                               temp:year+MeanFD_std:temp:year+n_fl_std+
+                               (1|unique_id)+(1|plot),data_transplants)
+# Is this what we want to test?
+summary(model_phensel_FFD_f)
+summary(model_phensel_LFD_f)
+summary(model_phensel_MeanFD_f)
+```
+
+```{r}
+plot(ggpredict(model_phensel_FFD_f,terms=c("temp","year")))
+plot(ggpredict(model_phensel_LFD_f,terms=c("temp","year")))
+plot(ggpredict(model_phensel_MeanFD_f,terms=c("temp","year")))
+```
+
+Fitness decreases with temperature in 2022 and increases in 2023.
+
+(Significantly higher temperatures in 2022: summary(lm(temp~year,data_transplants)))
+
+##### Boostrappred confidence intervals
+
+```{r eval=FALSE, include=FALSE}
+b_model_phensel_FFD_f<-bootMer(x=model_phensel_FFD_f,FUN=fixef,nsim=1000) # Increase to 10000
+b_model_phensel_LFD_f<-bootMer(x=model_phensel_LFD_f,FUN=fixef,nsim=1000)
+b_model_phensel_MeanFD_f<-bootMer(x=model_phensel_MeanFD_f,FUN=fixef,nsim=1000)
+save(b_model_phensel_FFD_f,file="output/b_model_phensel_FFD_f.RData")
+save(b_model_phensel_LFD_f,file="output/b_model_phensel_LFD_f.RData")
+save(b_model_phensel_MeanFD_f,file="output/b_model_phensel_MeanFD_f.RData")
+```
+
+```{r}
+confint(b_model_phensel_FFD_f,level=0.95, method="boot") # Percentile method
+confint(b_model_phensel_LFD_f,level=0.95, method="boot") # Percentile method
+confint(b_model_phensel_MeanFD_f,level=0.95, method="boot") # Percentile method
+```
+
+##### Bootstrapped mdoels as before - DO?
+
+#### With median h as condition trait
+
+```{r}
+model_phensel_FFD_h<-lmer(fitness_rel~FFD_std*temp+FFD_std:year+temp:year+
+                            FFD_std:temp:year+median_h_std+(1|unique_id)+
+                            (1|plot),data_transplants)
+model_phensel_LFD_h<-lmer(fitness_rel~LFD_std*temp+LFD_std:year+temp:year+
+                            LFD_std:temp:year+median_h_std+(1|unique_id)+
+                            (1|plot),data_transplants)
+model_phensel_MeanFD_h<-lmer(fitness_rel~MeanFD_std*temp+MeanFD_std:year+
+                               temp:year+MeanFD_std:temp:year+median_h_std+
+                               (1|unique_id)+(1|plot),data_transplants)
+summary(model_phensel_FFD_h)
+summary(model_phensel_LFD_h)
+summary(model_phensel_MeanFD_h)
+```
+
+```{r}
+plot(ggpredict(model_phensel_FFD_h,terms=c("temp","year")))
+plot(ggpredict(model_phensel_LFD_h,terms=c("temp","year")))
+plot(ggpredict(model_phensel_MeanFD_h,terms=c("temp","year")))
+```
+
+Fitness decreases with temperature in 2022 and increases in 2023.
+
+(Significantly higher temperatures in 2022: summary(lm(temp~year,data_transplants)))
+
+##### DO: Boostrappred confidence intervals
+
+##### Bootstrapped mdoels as before - DO?
+
+#### With no condition trait
+
+```{r}
+model_phensel_FFD<-lmer(fitness_rel~FFD_std*temp+FFD_std:year+temp:year+
+                            FFD_std:temp:year+(1|unique_id)+(1|plot),
+                      data_transplants)
+model_phensel_LFD<-lmer(fitness_rel~LFD_std*temp+LFD_std:year+temp:year+
+                            LFD_std:temp:year+(1|unique_id)+(1|plot),
+                      data_transplants)
+model_phensel_MeanFD<-lmer(fitness_rel~MeanFD_std*temp+MeanFD_std:year+
+                               temp:year+MeanFD_std:temp:year+
+                               (1|unique_id)+(1|plot),data_transplants)
+summary(model_phensel_FFD)
+summary(model_phensel_LFD)
+summary(model_phensel_MeanFD)
+```
+
+```{r}
+plot(ggpredict(model_phensel_FFD,terms=c("temp","year")))
+plot(ggpredict(model_phensel_LFD,terms=c("temp","year")))
+plot(ggpredict(model_phensel_MeanFD,terms=c("temp","year")))
+```
+
+Fitness decreases with temperature in 2022 and increases in 2023.
+
+(Significantly higher temperatures in 2022: summary(lm(temp~year,data_transplants)))
+
+##### DO: Boostrappred confidence intervals
+
+##### Bootstrapped mdoels as before - DO?
+
+### Yearly models
+
+#### 2022
+
+##### With n flowers as condition trait
+
+```{r}
+model_phensel_22_FFD_f<-lmer(fitness_rel~FFD_std*temp+n_fl_std+
+                               (1|plot),subset(data_transplants,year==2022))
+model_phensel_22_LFD_f<-lmer(fitness_rel~LFD_std*temp++n_fl_std+
+                               (1|plot),subset(data_transplants,year==2022))
+model_phensel_22_MeanFD_f<-lmer(fitness_rel~MeanFD_std*temp+n_fl_std+
+                                  (1|plot),
+                                subset(data_transplants,year==2022))
+summary(model_phensel_22_FFD_f)
+summary(model_phensel_22_LFD_f)
+summary(model_phensel_22_MeanFD_f)
+```
+
+No interaction (no temperature-dependent selection). No selection on phenology.
+
+##### With median h as condition trait
+
+```{r}
+model_phensel_22_FFD_h<-lmer(fitness_rel~FFD_std*temp+median_h_std+
+                               (1|plot),subset(data_transplants,year==2022))
+model_phensel_22_LFD_h<-lmer(fitness_rel~LFD_std*temp++median_h_std+
+                               (1|plot),subset(data_transplants,year==2022))
+model_phensel_22_MeanFD_h<-lmer(fitness_rel~MeanFD_std*temp+median_h_std+
+                                  (1|plot),
+                                subset(data_transplants,year==2022))
+# Singular fits for LFD and MeanFD because low var for plot
+# Try lm with no random effects_?
+summary(model_phensel_22_FFD_h)
+summary(model_phensel_22_LFD_h)
+summary(model_phensel_22_MeanFD_h)
+```
+
+```{r}
+plot(ggpredict(model_phensel_22_FFD_h,terms=c("FFD_std","temp[quart]")))
+plot(ggpredict(model_phensel_22_LFD_h,terms=c("LFD_std","temp[quart]")))
+plot(ggpredict(model_phensel_22_MeanFD_h,terms=c("MeanFD_std","temp[quart]")))
+```
+
+Significant interaction (temperature-dependent selection).
+
+Predicted: Selection favors an earlier phenology at low soil temperatures but a later phenology at high temperatures.
+
+But we found that selection always favors an earlier phenology, and that selection for earlier phenology is stronger at warmer temperatures (opposite to our prediction!).
+
+##### With no condition trait
+
+```{r}
+model_phensel_22_FFD<-lmer(fitness_rel~FFD_std*temp+
+                               (1|plot),subset(data_transplants,year==2022))
+model_phensel_22_LFD<-lmer(fitness_rel~LFD_std*temp+
+                               (1|plot),subset(data_transplants,year==2022))
+model_phensel_22_MeanFD<-lmer(fitness_rel~MeanFD_std*temp+
+                                  (1|plot),
+                                subset(data_transplants,year==2022))
+# Same here for plot
+summary(model_phensel_22_FFD)
+summary(model_phensel_22_LFD)
+summary(model_phensel_22_MeanFD)
+```
+
+```{r}
+plot(ggpredict(model_phensel_22_FFD,terms=c("FFD_std","temp[quart]")))
+plot(ggpredict(model_phensel_22_LFD,terms=c("LFD_std","temp[quart]")))
+plot(ggpredict(model_phensel_22_MeanFD,terms=c("MeanFD_std","temp[quart]")))
+```
+
+Significant interaction (temperature-dependent selection).
+
+Predicted: Selection favors an earlier phenology at low soil temperatures but a later phenology at high temperatures.
+
+But we found that selection always favors an earlier phenology, and that selection for earlier phenology is stronger at warmer temperatures (opposite to our prediction!).
+
+#### 2023
+
+##### With n flowers as condition trait
+
+```{r}
+model_phensel_23_FFD_f<-lmer(fitness_rel~FFD_std*temp+n_fl_std+
+                               (1|plot),subset(data_transplants,year==2023))
+model_phensel_23_LFD_f<-lmer(fitness_rel~LFD_std*temp++n_fl_std+
+                               (1|plot),subset(data_transplants,year==2023))
+model_phensel_23_MeanFD_f<-lmer(fitness_rel~MeanFD_std*temp+n_fl_std+
+                                  (1|plot),
+                                subset(data_transplants,year==2023))
+summary(model_phensel_23_FFD_f)
+summary(model_phensel_23_LFD_f)
+summary(model_phensel_23_MeanFD_f)
+```
+
+No interaction (no temperature-dependent selection). No selection on phenology.
+
+##### With median h as condition trait
+
+```{r}
+model_phensel_23_FFD_h<-lmer(fitness_rel~FFD_std*temp+median_h_std+
+                               (1|plot),subset(data_transplants,year==2023))
+model_phensel_23_LFD_h<-lmer(fitness_rel~LFD_std*temp++median_h_std+
+                               (1|plot),subset(data_transplants,year==2023))
+model_phensel_23_MeanFD_h<-lmer(fitness_rel~MeanFD_std*temp+median_h_std+
+                                  (1|plot),
+                                subset(data_transplants,year==2023))
+summary(model_phensel_23_FFD_h)
+summary(model_phensel_23_LFD_h)
+summary(model_phensel_23_MeanFD_h)
+```
+
+No interaction (no temperature-dependent selection). No selection on phenology.
+
+##### With no condition trait
+
+```{r}
+model_phensel_23_FFD<-lmer(fitness_rel~FFD_std*temp+
+                               (1|plot),subset(data_transplants,year==2023))
+model_phensel_23_LFD<-lmer(fitness_rel~LFD_std*temp+
+                               (1|plot),subset(data_transplants,year==2023))
+model_phensel_23_MeanFD<-lmer(fitness_rel~MeanFD_std*temp+
+                                  (1|plot),
+                                subset(data_transplants,year==2023))
+summary(model_phensel_23_FFD)
+summary(model_phensel_23_LFD)
+summary(model_phensel_23_MeanFD)
+```
+
+No interaction (no temperature-dependent selection). No selection on phenology.
+
+#### DO: Boostrappred confidence intervals
+
+And bootstrapped mdoels as before - DO?
+
+## Fitness 0/1
+
+```{r}
+data_transplants<-data_transplants%>%
+  mutate(fitness_01=ifelse(is.na(fitness_rel),NA,
+                           ifelse(fitness_rel>0,1,0)))
+```
+
+### Models both years
+
+#### With n flowers as condition trait
+
+```{r}
+model_phensel_01_FFD_f<-glmmTMB(fitness_01~FFD_std*temp+FFD_std:year+temp:year+
+                            FFD_std:temp:year+n_fl_std+(1|unique_id)+(1|plot),
+                           data_transplants,family="binomial")
+model_phensel_01_LFD_f<-glmmTMB(fitness_01~LFD_std*temp+LFD_std:year+temp:year+
+                            LFD_std:temp:year+n_fl_std+(1|unique_id)+(1|plot),
+                           data_transplants,family="binomial")
+model_phensel_01_MeanFD_f<-glmmTMB(fitness_01~MeanFD_std*temp+MeanFD_std:year+
+                               temp:year+MeanFD_std:temp:year+n_fl_std+
+                               (1|unique_id)+(1|plot),data_transplants,
+                               family="binomial")
+summary(model_phensel_01_FFD_f)
+summary(model_phensel_01_LFD_f)
+summary(model_phensel_01_MeanFD_f)
+```
+
+```{r}
+plot(ggpredict(model_phensel_01_FFD_f,terms=c("temp","year")))
+plot(ggpredict(model_phensel_01_LFD_f,terms=c("temp","year")))
+plot(ggpredict(model_phensel_01_MeanFD_f,terms=c("temp","year")))
+```
+
+#### With median h as condition trait
+
+```{r}
+model_phensel_01_FFD_h<-glmmTMB(fitness_01~FFD_std*temp+FFD_std:year+temp:year+
+                            FFD_std:temp:year+median_h_std+(1|unique_id)+
+                            (1|plot),data_transplants,family="binomial")
+model_phensel_01_LFD_h<-glmmTMB(fitness_01~LFD_std*temp+LFD_std:year+temp:year+
+                            LFD_std:temp:year+median_h_std+(1|unique_id)+
+                            (1|plot),data_transplants,family="binomial")
+model_phensel_01_MeanFD_h<-glmmTMB(fitness_01~MeanFD_std*temp+MeanFD_std:year+
+                               temp:year+MeanFD_std:temp:year+median_h_std+
+                               (1|unique_id)+(1|plot),data_transplants,
+                               family="binomial")
+summary(model_phensel_01_FFD_h)
+summary(model_phensel_01_LFD_h)
+summary(model_phensel_01_MeanFD_h)
+```
+
+```{r}
+plot(ggpredict(model_phensel_01_FFD_h,terms=c("temp","year")))
+plot(ggpredict(model_phensel_01_LFD_h,terms=c("temp","year")))
+plot(ggpredict(model_phensel_01_MeanFD_h,terms=c("temp","year")))
+```
+
+#### With no condition trait
+
+```{r}
+model_phensel_01_FFD<-glmmTMB(fitness_01~FFD_std*temp+FFD_std:year+temp:year+
+                            FFD_std:temp:year+(1|unique_id)+(1|plot),
+                      data_transplants,family="binomial")
+model_phensel_01_LFD<-glmmTMB(fitness_01~LFD_std*temp+LFD_std:year+temp:year+
+                            LFD_std:temp:year+(1|unique_id)+(1|plot),
+                      data_transplants,family="binomial")
+model_phensel_01_MeanFD<-glmmTMB(fitness_01~MeanFD_std*temp+MeanFD_std:year+
+                               temp:year+MeanFD_std:temp:year+
+                               (1|unique_id)+(1|plot),data_transplants,
+                              family="binomial")
+summary(model_phensel_01_FFD)
+summary(model_phensel_01_LFD)
+summary(model_phensel_01_MeanFD)
+```
+
+```{r}
+plot(ggpredict(model_phensel_01_FFD,terms=c("temp","year")))
+plot(ggpredict(model_phensel_01_LFD,terms=c("temp","year")))
+plot(ggpredict(model_phensel_01_MeanFD,terms=c("temp","year")))
+```
+
+#### 2022
+
+##### With n flowers as condition trait
+
+```{r}
+model_phensel_01_22_FFD_f<-glmmTMB(fitness_01~FFD_std*temp+n_fl_std+
+                               (1|plot),subset(data_transplants,year==2022),
+                               family="binomial")
+model_phensel_01_22_LFD_f<-glmmTMB(fitness_01~LFD_std*temp++n_fl_std+
+                               (1|plot),subset(data_transplants,year==2022),
+                               family="binomial")
+model_phensel_01_22_MeanFD_f<-glmmTMB(fitness_01~MeanFD_std*temp+n_fl_std+
+                                  (1|plot),
+                                subset(data_transplants,year==2022),
+                                family="binomial")
+summary(model_phensel_01_22_FFD_f)
+summary(model_phensel_01_22_LFD_f)
+summary(model_phensel_01_22_MeanFD_f)
+```
+
+##### With median h as condition trait
+
+```{r}
+model_phensel_01_22_FFD_h<-glmmTMB(fitness_01~FFD_std*temp+median_h_std+
+                               (1|plot),subset(data_transplants,year==2022),
+                               family="binomial")
+model_phensel_01_22_LFD_h<-glmmTMB(fitness_01~LFD_std*temp++median_h_std+
+                               (1|plot),subset(data_transplants,year==2022),
+                               family="binomial")
+model_phensel_01_22_MeanFD_h<-glmmTMB(fitness_01~MeanFD_std*temp+median_h_std+
+                                  (1|plot),
+                                subset(data_transplants,year==2022),
+                                family="binomial")
+# Singular fits for LFD and MeanFD because low var for plot
+# Try lm with no random effects_?
+summary(model_phensel_01_22_FFD_h)
+summary(model_phensel_01_22_LFD_h)
+summary(model_phensel_01_22_MeanFD_h)
+```
+
+##### With no condition trait
+
+```{r}
+model_phensel_01_22_FFD<-glmmTMB(fitness_01~FFD_std*temp+
+                               (1|plot),subset(data_transplants,year==2022),
+                               family="binomial")
+model_phensel_01_22_LFD<-glmmTMB(fitness_01~LFD_std*temp+
+                               (1|plot),subset(data_transplants,year==2022),
+                               family="binomial")
+model_phensel_01_22_MeanFD<-glmmTMB(fitness_01~MeanFD_std*temp+
+                                  (1|plot),
+                                subset(data_transplants,year==2022),
+                                family="binomial")
+# Same here for plot
+summary(model_phensel_01_22_FFD)
+summary(model_phensel_01_22_LFD)
+summary(model_phensel_01_22_MeanFD)
+```
+
+#### 2023
+
+##### With n flowers as condition trait
+
+```{r}
+model_phensel_01_23_FFD_f<-glmmTMB(fitness_01~FFD_std*temp+n_fl_std+
+                               (1|plot),subset(data_transplants,year==2023),
+                               family="binomial")
+model_phensel_01_23_LFD_f<-glmmTMB(fitness_01~LFD_std*temp++n_fl_std+
+                               (1|plot),subset(data_transplants,year==2023),
+                                 family="binomial")
+model_phensel_01_23_MeanFD_f<-glmmTMB(fitness_01~MeanFD_std*temp+n_fl_std+
+                                  (1|plot),
+                                subset(data_transplants,year==2023),
+                                family="binomial")
+summary(model_phensel_01_23_FFD_f)
+summary(model_phensel_01_23_LFD_f)
+summary(model_phensel_01_23_MeanFD_f)
+```
+
+##### With median h as condition trait
+
+```{r}
+model_phensel_01_23_FFD_h<-glmmTMB(fitness_01~FFD_std*temp+median_h_std+
+                               (1|plot),subset(data_transplants,year==2023),
+                               family="binomial")
+model_phensel_01_23_LFD_h<-glmmTMB(fitness_01~LFD_std*temp++median_h_std+
+                               (1|plot),subset(data_transplants,year==2023),
+                               family="binomial")
+model_phensel_01_23_MeanFD_h<-glmmTMB(fitness_01~MeanFD_std*temp+median_h_std+
+                                  (1|plot),
+                                subset(data_transplants,year==2023),
+                               family="binomial")
+summary(model_phensel_01_23_FFD_h)
+summary(model_phensel_01_23_LFD_h)
+summary(model_phensel_01_23_MeanFD_h)
+```
+
+##### With no condition trait
+
+```{r}
+model_phensel_01_23_FFD<-glmmTMB(fitness_01~FFD_std*temp+
+                               (1|plot),subset(data_transplants,year==2023),
+                               family="binomial")
+model_phensel_01_23_LFD<-glmmTMB(fitness_01~LFD_std*temp+
+                               (1|plot),subset(data_transplants,year==2023),
+                               family="binomial")
+model_phensel_01_23_MeanFD<-glmmTMB(fitness_01~MeanFD_std*temp+
+                                  (1|plot),
+                                subset(data_transplants,year==2023),
+                               family="binomial")
+summary(model_phensel_01_23_FFD)
+summary(model_phensel_01_23_LFD)
+summary(model_phensel_01_23_MeanFD)
+```
+
+# PREDICTION 3
+
+"This temperature-dependent phenotypic selection corresponds, partly, to genotypic selection."
+
+But we found no temperature-dependent phenotypic selection (or opposite to expectation sometimes).
+
+# PREDICTION 4
+
+"Divergent temperature-dependent selection has resulted in small-scale genetic differentiation and local adaptation along gradients of soil temperature, and this local adaptation involves flowering time."
+
+To test if plants are adapted to their local thermal environment, we regressed fitness on the absolute difference in temperature between the transplantation site and the mean temperature of the parents’ sites of origin. 
+
+Calculate temperature difference:
+
+```{r}
+data_transplants<-data_transplants%>%
+  mutate(temp_diff=abs(temp-((temp_mother+temp_father)/2)))
+hist(data_transplants$temp_diff)
+```
+
+## Fitness
+
+### Models without phenology
+
+#### Both years
+
+```{r}
+model_local_adapt<-glmmTMB(n_tot_seed~temp_diff*year+(1|unique_id)+(1|plot),
+                        data_transplants,family="nbinom2")
+model_local_adapt_zi<-glmmTMB(n_tot_seed~temp_diff*year+(1|unique_id),
+                              #+(1|plot), # Removed because it explained very
+                              # low variance, and gave a warming
+                              ziformula=~temp_diff*year+(1|unique_id)+(1|plot),
+                              data_transplants,family="nbinom2")
+summary(model_local_adapt)
+summary(model_local_adapt_zi)
+AIC(model_local_adapt,model_local_adapt_zi)
+```
+
+Model with zero inflation is best.
+
+```{r}
+plot(ggpredict(model_local_adapt_zi,terms=c("temp_diff"),type="count"))
+# NS (P = 0.09)
+plot(ggpredict(model_local_adapt_zi,terms=c("temp_diff"),type="zi_prob"))
+# *
+plot(ggpredict(model_local_adapt_zi,terms=c("temp_diff","year"),type="count"))
+# NS
+plot(ggpredict(model_local_adapt_zi,terms=c("temp_diff","year"),type="zi_prob"))
+# NS
+```
+
+#### 2022
+
+```{r}
+model_local_adapt_22<-glmmTMB(n_tot_seed~temp_diff+(1|plot),
+                        subset(data_transplants,year==2022),family="nbinom2")
+model_local_adapt_22_zi<-glmmTMB(n_tot_seed~temp_diff+(1|plot),
+                                 ziformula=~.,
+                                 subset(data_transplants,year==2022),
+                                 family="nbinom2")
+summary(model_local_adapt_22)
+summary(model_local_adapt_22_zi)
+AIC(model_local_adapt_22,model_local_adapt_22_zi)
+```
+
+Model with zero inflation is best.
+
+Try with quadratic effect of temp_diff:
+
+```{r}
+model_local_adapt_22_zi_sq<-glmmTMB(n_tot_seed~temp_diff+I(temp_diff^2)+
+                                      (1|plot),
+                                    ziformula=~.,
+                                    subset(data_transplants,year==2022),
+                                    family="nbinom2")
+summary(model_local_adapt_22_zi_sq)
+AIC(model_local_adapt_22_zi,model_local_adapt_22_zi_sq)
+```
+
+Model with quadratic effect is best.
+
+```{r}
+plot(ggpredict(model_local_adapt_22_zi_sq,type="count",
+               terms="temp_diff [all]"))  #NS (P = 0.098)
+plot(ggpredict(model_local_adapt_22_zi_sq,type="zi_prob",
+terms="temp_diff [all]")) #*
+```
+
+#### 2023
+
+```{r}
+model_local_adapt_23<-glmmTMB(n_tot_seed~temp_diff+(1|plot),
+                        subset(data_transplants,year==2023),family="nbinom2")
+model_local_adapt_23_zi<-glmmTMB(n_tot_seed~temp_diff+(1|plot),
+                                 ziformula=~.,
+                                 subset(data_transplants,year==2023),
+                                 family="nbinom2")
+summary(model_local_adapt_23)
+summary(model_local_adapt_23_zi)
+AIC(model_local_adapt_23,model_local_adapt_23_zi)
+```
+
+Model with zero inflation is best.
+
+Try with quadratic effect of temp_diff:
+
+```{r}
+model_local_adapt_23_zi_sq<-glmmTMB(n_tot_seed~temp_diff+I(temp_diff^2)+
+                                      (1|plot),
+                                    ziformula=~.,
+                                    subset(data_transplants,year==2023),
+                                    family="nbinom2")
+summary(model_local_adapt_23_zi_sq)
+AIC(model_local_adapt_23_zi,model_local_adapt_23_zi_sq)
+```
+
+Model with quadratic effect is worst: use model without quadratic effect.
+
+```{r}
+plot(ggpredict(model_local_adapt_23_zi,type="count",terms="temp_diff [all]")) #*
+plot(ggpredict(model_local_adapt_23_zi,type="zi_prob",terms="temp_diff [all]")) #*
+```
+
+#### Diagnostics
+
+```{r}
+plot(simulateResiduals(model_local_adapt_zi))
+plot(simulateResiduals(model_local_adapt_22_zi_sq))
+plot(simulateResiduals(model_local_adapt_23_zi))
+```
+
+Take as OK??
+
+### Models with phenology
+
+To test to what extent any such evidence of local adaptation to the thermal environment was mediated by differences in flowering time, we ran a model including also expressed flowering time of focal individuals. 
+
+If the decrease in fitness with temperature difference is not significant when including flowering time, we can conclude that local adaptation is mediated by differences in flowering time?
+
+#### FFD
+
+##### Both years
+
+```{r}
+model_local_adapt_FFD<-glmmTMB(n_tot_seed~temp_diff*year+FFD_corr+
+                                 (1|unique_id)+(1|plot),
+                        data_transplants,family="nbinom2")
+model_local_adapt_zi_FFD<-glmmTMB(n_tot_seed~temp_diff+year+FFD_corr,
+                              #+(1|unique_id)+(1|plot), # Removed because it explained very
+                              # low variance, and gave a warming
+                              ziformula=~temp_diff+year+FFD_corr+
+                                (1|unique_id)+(1|plot),
+                              data_transplants,family="nbinom2")
+# Still gives warnings (not sure why, but results seem OK)
+# Warning messages:
+# 1: In (function (start, objective, gradient = NULL, hessian = NULL,  :
+#   NA/NaN function evaluation
+# 2: In (function (start, objective, gradient = NULL, hessian = NULL,  :
+#   NA/NaN function evaluation
+summary(model_local_adapt_FFD)
+summary(model_local_adapt_zi_FFD)
+AIC(model_local_adapt_FFD,model_local_adapt_zi_FFD)
+```
+
+Not sure how to interpret this, easier with yearly models?
+
+##### 2022
+
+```{r}
+model_local_adapt_22_FFD<-glmmTMB(n_tot_seed~temp_diff+FFD_corr+(1|plot),
+                        subset(data_transplants,year==2022),family="nbinom2")
+model_local_adapt_22_zi_FFD<-glmmTMB(n_tot_seed~temp_diff+FFD_corr,
+                                     #+(1|plot),
+                                 ziformula=~temp_diff+FFD_corr+(1|plot),
+                                 subset(data_transplants,year==2022),
+                                 family="nbinom2")
+summary(model_local_adapt_22_FFD)
+summary(model_local_adapt_22_zi_FFD)
+AIC(model_local_adapt_22_FFD,model_local_adapt_22_zi_FFD)
+```
+
+Try with quadratic effect of temp_diff:
+
+```{r}
+model_local_adapt_22_zi_FFD_sq<-glmmTMB(n_tot_seed~temp_diff+I(temp_diff^2)+
+                                          FFD_corr+(1|plot),
+                                    ziformula=~.,
+                                    subset(data_transplants,year==2022),
+                                    family="nbinom2")
+summary(model_local_adapt_22_zi_FFD_sq)
+AIC(model_local_adapt_22_zi_FFD,model_local_adapt_22_zi_FFD_sq)
+```
+
+Model with quadratic effect is best.
+
+```{r}
+plot(ggpredict(model_local_adapt_22_zi_FFD_sq,type="count",
+               terms="temp_diff [all]"))  #NS 
+plot(ggpredict(model_local_adapt_22_zi_FFD_sq,type="zi_prob",
+terms="temp_diff [all]")) #*
+plot(ggpredict(model_local_adapt_22_zi_FFD_sq,type="count",
+terms="FFD_corr [all]")) #*
+```
+
+##### 2023
+
+```{r}
+model_local_adapt_23_FFD<-glmmTMB(n_tot_seed~temp_diff+FFD_corr+(1|plot),
+                        subset(data_transplants,year==2023),family="nbinom2")
+model_local_adapt_23_zi_FFD<-glmmTMB(n_tot_seed~temp_diff+FFD_corr+(1|plot),
+                                 ziformula=~.,
+                                 subset(data_transplants,year==2023),
+                                 family="nbinom2")
+summary(model_local_adapt_23_FFD)
+summary(model_local_adapt_23_zi_FFD)
+AIC(model_local_adapt_23_FFD,model_local_adapt_23_zi_FFD)
+```
+
+Try with quadratic effect of temp_diff:
+
+```{r}
+model_local_adapt_23_zi_FFD_sq<-glmmTMB(n_tot_seed~temp_diff+I(temp_diff^2)+
+                                          FFD_corr+(1|plot),
+                                    ziformula=~.,
+                                    subset(data_transplants,year==2023),
+                                    family="nbinom2")
+summary(model_local_adapt_23_zi_FFD_sq)
+AIC(model_local_adapt_23_zi_FFD,model_local_adapt_23_zi_FFD_sq)
+```
+
+Model with quadratic effect is best.
+
+```{r}
+plot(ggpredict(model_local_adapt_23_zi_FFD_sq,type="count",
+               terms="temp_diff [all]"))  #NS 
+plot(ggpredict(model_local_adapt_23_zi_FFD_sq,type="zi_prob",
+terms="temp_diff [all]")) #*(linear term)
+plot(ggpredict(model_local_adapt_23_zi_FFD_sq,type="zi_prob",
+terms="FFD_corr [all]")) #*
+plot(ggpredict(model_local_adapt_23_zi_FFD_sq,type="count",
+terms="FFD_corr [all]")) #*
+```
+
+#### MeanFD
+
+##### Both years
+
+```{r}
+model_local_adapt_MeanFD<-glmmTMB(n_tot_seed~temp_diff*year+MeanFD+
+                                 (1|unique_id)+(1|plot),
+                        data_transplants,family="nbinom2")
+model_local_adapt_zi_MeanFD<-glmmTMB(n_tot_seed~temp_diff+year+MeanFD+
+                                    (1|unique_id)+(1|plot), 
+                              ziformula=~temp_diff+year+FFD_corr+
+                                (1|unique_id)+(1|plot),
+                              data_transplants,family="nbinom2")
+summary(model_local_adapt_MeanFD)
+summary(model_local_adapt_zi_MeanFD)
+AIC(model_local_adapt_MeanFD,model_local_adapt_zi_MeanFD)
+```
+
+##### 2022
+
+```{r}
+model_local_adapt_22_MeanFD<-glmmTMB(n_tot_seed~temp_diff+MeanFD+(1|plot),
+                        subset(data_transplants,year==2022),family="nbinom2")
+model_local_adapt_22_zi_MeanFD<-glmmTMB(n_tot_seed~temp_diff+MeanFD,
+                                     #+(1|plot),
+                                 ziformula=~temp_diff+MeanFD+(1|plot),
+                                 subset(data_transplants,year==2022),
+                                 family="nbinom2")
+# Still NAs in summary, not sure why
+summary(model_local_adapt_22_MeanFD)
+summary(model_local_adapt_22_zi_MeanFD)
+AIC(model_local_adapt_22_FFD,model_local_adapt_22_zi_MeanFD)
+```
+
+Try with quadratic effect of temp_diff:
+
+```{r}
+model_local_adapt_22_zi_MeanFD_sq<-glmmTMB(n_tot_seed~temp_diff+I(temp_diff^2)+
+                                          MeanFD+(1|plot),
+                                    ziformula=~.,
+                                    subset(data_transplants,year==2022),
+                                    family="nbinom2")
+summary(model_local_adapt_22_zi_MeanFD_sq)
+AIC(model_local_adapt_22_zi_MeanFD,model_local_adapt_22_zi_MeanFD_sq)
+```
+
+##### 2023
+
+```{r}
+model_local_adapt_23_MeanFD<-glmmTMB(n_tot_seed~temp_diff+MeanFD+(1|plot),
+                        subset(data_transplants,year==2023),family="nbinom2")
+model_local_adapt_23_zi_MeanFD<-glmmTMB(n_tot_seed~temp_diff+MeanFD+(1|plot),
+                                 ziformula=~.,
+                                 subset(data_transplants,year==2023),
+                                 family="nbinom2")
+summary(model_local_adapt_23_MeanFD)
+summary(model_local_adapt_23_zi_MeanFD)
+AIC(model_local_adapt_23_MeanFD,model_local_adapt_23_zi_MeanFD)
+```
+
+## Fitness 0/1
+
+### Models without phenology
+
+Calculate fitness 0/1:
+
+```{r}
+data_transplants<-data_transplants%>%
+  mutate(fitness_01=ifelse(n_tot_seed>0,1,0))
+hist(data_transplants$fitness_01)
+```
+
+#### Both years
+
+```{r}
+model_local_adapt_01<-glmmTMB(fitness_01~temp_diff*year+(1|unique_id)+(1|plot),
+                        data_transplants,family="binomial")
+model_local_adapt_01_sq<-glmmTMB(fitness_01~(temp_diff+I(temp_diff^2))*year+
+                                   (1|unique_id)+(1|plot),
+                        data_transplants,family="binomial")
+summary(model_local_adapt_01)
+summary(model_local_adapt_01_sq)
+AIC(model_local_adapt_01,model_local_adapt_01_sq)
+```
+
+Model with squared term is best
+
+```{r}
+plot(ggpredict(model_local_adapt_01_sq,terms=c("temp_diff[all]"))) # *
+plot(ggpredict(model_local_adapt_01_sq,terms=c("year"))) # *
+plot(ggpredict(model_local_adapt_01_sq,terms=c("temp_diff[all]","year"))) # NS
+```
+
+#### 2022
+
+```{r}
+model_local_adapt_01_22<-glmmTMB(fitness_01~temp_diff+(1|plot),
+                        subset(data_transplants,year==2022),family="binomial")
+model_local_adapt_01_22_sq<-glmmTMB(fitness_01~temp_diff+I(temp_diff^2)+
+                                      (1|plot),
+                                    subset(data_transplants,year==2022),
+                                    family="binomial")
+summary(model_local_adapt_01_22)
+summary(model_local_adapt_01_22_sq)
+AIC(model_local_adapt_01_22,model_local_adapt_01_22_sq)
+```
+
+Model with quadratic term is best
+
+```{r}
+plot(ggpredict(model_local_adapt_01_22_sq,terms="temp_diff[all]")) 
+```
+
+#### 2023
+
+```{r}
+model_local_adapt_01_23<-glmmTMB(fitness_01~temp_diff+(1|plot),
+                        subset(data_transplants,year==2023),family="binomial")
+model_local_adapt_01_23_sq<-glmmTMB(fitness_01~temp_diff+I(temp_diff^2)+
+                                      (1|plot),
+                                    subset(data_transplants,year==2023),
+                                    family="binomial")
+summary(model_local_adapt_01_23)
+summary(model_local_adapt_01_23_sq)
+AIC(model_local_adapt_01_23,model_local_adapt_01_23_sq)
+```
+
+Model with quadratic effect is worst: use model without quadratic effect.
+
+```{r}
+plot(ggpredict(model_local_adapt_01_23)) 
+```
+
+### Models with phenology
+
+#### FFD
+
+##### Both years
+
+```{r}
+model_local_adapt_01_FFD<-glmmTMB(fitness_01~temp_diff*year+FFD_corr+
+                                    (1|unique_id)+(1|plot),
+                        data_transplants,family="binomial")
+model_local_adapt_01_FFD_sq<-glmmTMB(fitness_01~(temp_diff+I(temp_diff^2))*year+
+                                       FFD_corr+(1|unique_id)+(1|plot),
+                                     data_transplants,family="binomial")
+summary(model_local_adapt_01_FFD)
+summary(model_local_adapt_01_FFD_sq)
+AIC(model_local_adapt_01_FFD,model_local_adapt_01_FFD_sq)
+```
+
+Model with quadratic term is best
+
+```{r}
+plot(ggpredict(model_local_adapt_01_FFD_sq,terms=c("temp_diff[all]"))) # *
+plot(ggpredict(model_local_adapt_01_FFD_sq,terms=c("year"))) # *
+plot(ggpredict(model_local_adapt_01_FFD_sq,terms=c("FFD_corr"))) # NS
+plot(ggpredict(model_local_adapt_01_FFD_sq,terms=c("temp_diff[all]","year"))) # *
+```
+
+##### 2022
+
+```{r}
+model_local_adapt_01_22_FFD<-glmmTMB(fitness_01~temp_diff+FFD_corr+(1|plot),
+                        subset(data_transplants,year==2022),family="binomial")
+model_local_adapt_01_22_FFD_sq<-glmmTMB(fitness_01~temp_diff+I(temp_diff^2)+
+                                          FFD_corr+(1|plot),
+                                        subset(data_transplants,year==2022),
+                                        family="binomial")
+summary(model_local_adapt_01_22_FFD)
+summary(model_local_adapt_01_22_FFD_sq)
+AIC(model_local_adapt_01_22_FFD,model_local_adapt_01_22_FFD_sq)
+```
+
+Model with quadratic term is best
+
+```{r}
+plot(ggpredict(model_local_adapt_01_22_FFD_sq,terms="temp_diff [all]")) #*
+```
+
+##### 2023
+
+```{r}
+model_local_adapt_01_23_FFD<-glmmTMB(fitness_01~temp_diff+FFD_corr+(1|plot),
+                        subset(data_transplants,year==2023),family="binomial")
+model_local_adapt_01_23_FFD_sq<-glmmTMB(fitness_01~temp_diff+I(temp_diff^2)+
+                                          FFD_corr+(1|plot),
+                                        subset(data_transplants,year==2023),
+                                        family="binomial")
+summary(model_local_adapt_01_23_FFD)
+summary(model_local_adapt_01_23_FFD_sq)
+AIC(model_local_adapt_01_23_FFD,model_local_adapt_01_23_FFD_sq)
+```
+
+Model with quadratic term is best
+
+```{r}
+plot(ggpredict(model_local_adapt_01_23_FFD_sq,terms="temp_diff [all]")) #*(linear term)
+plot(ggpredict(model_local_adapt_01_23_FFD_sq,terms="FFD_corr [all]")) #*
+```
+
+#### MeanFD
+
+##### Both years
+
+```{r}
+model_local_adapt_01_MeanFD<-glmmTMB(fitness_01~temp_diff*year+MeanFD+
+                                    (1|unique_id)+(1|plot),
+                        data_transplants,family="binomial")
+model_local_adapt_01_MeanFD_sq<-glmmTMB(fitness_01~(temp_diff+I(temp_diff^2))*year+
+                                          MeanFD+(1|unique_id)+(1|plot),
+                                        data_transplants,family="binomial")
+summary(model_local_adapt_01_MeanFD)
+summary(model_local_adapt_01_MeanFD_sq)
+AIC(model_local_adapt_01_MeanFD,model_local_adapt_01_MeanFD_sq)
+```
+
+##### 2022
+
+```{r}
+model_local_adapt_01_22_MeanFD<-glmmTMB(fitness_01~temp_diff+MeanFD+(1|plot),
+                        subset(data_transplants,year==2022),family="binomial")
+model_local_adapt_01_22_MeanFD_sq<-glmmTMB(fitness_01~temp_diff+I(temp_diff^2)+
+                                             MeanFD+(1|plot),
+                                           subset(data_transplants,year==2022),
+                                           family="binomial")
+summary(model_local_adapt_01_22_MeanFD)
+summary(model_local_adapt_01_22_MeanFD_sq)
+AIC(model_local_adapt_01_22_MeanFD,model_local_adapt_01_22_MeanFD_sq)
+```
+
+Model with quadratic term is worst.
+
+##### 2023
+
+```{r}
+model_local_adapt_01_23_MeanFD<-glmmTMB(fitness_01~temp_diff+MeanFD+(1|plot),
+                        subset(data_transplants,year==2023),family="binomial")
+model_local_adapt_01_23_MeanFD_sq<-glmmTMB(fitness_01~temp_diff+I(temp_diff^2)+
+                                             MeanFD+(1|plot),
+                                           subset(data_transplants,year==2023),
+                                           family="binomial")
+summary(model_local_adapt_01_23_MeanFD)
+summary(model_local_adapt_01_23_MeanFD_sq)
+AIC(model_local_adapt_01_23_MeanFD,model_local_adapt_01_23_MeanFD_sq)
+```
+
+Model with quadratic term is worst.
+
+## Path analysis
+
+[Possibly do a small path-model with direct and indirect, via phenology, effects of origin on fitness?] 
+
+### Fitness
+
+#### FFD
+
+```{r}
+data_transplants$temp_diff_square<-(data_transplants$temp_diff)^2
+```
+
+```{r}
+path_local_adapt_22_FFD<-psem(glmmTMB(FFD_corr~temp_diff+(1|plot),
+                                      subset(data_transplants,year==2022)),
+                              glmmTMB(n_tot_seed~temp_diff+temp_diff_square+
+                                          FFD_corr+(1|plot),
+                                    ziformula=~.,
+                                    subset(data_transplants,year==2022),
+                                    family="nbinom2"))
+path_local_adapt_23_FFD<-psem(glmmTMB(FFD_corr~temp_diff+(1|plot),
+                                      subset(data_transplants,year==2023)),
+                              glmmTMB(n_tot_seed~temp_diff+temp_diff_square+
+                                          FFD_corr+(1|plot),
+                                    ziformula=~.,
+                                    subset(data_transplants,year==2023),
+                                    family="nbinom2"))
+```
+
+```{r}
+coefs(path_local_adapt_22_FFD)
+coefs(path_local_adapt_23_FFD)
+```
+
+
+### Fitness 0/1
+
+#### FFD
+
+```{r}
+path_local_adapt_01_22_FFD<-psem(glmmTMB(FFD_corr~temp_diff+(1|plot),
+                                         subset(data_transplants,year==2022)),
+                                 glmmTMB(fitness_01~temp_diff+temp_diff_square+
+                                          FFD_corr+(1|plot),
+                                        subset(data_transplants,year==2022),
+                                        family="binomial"))
+path_local_adapt_01_23_FFD<-psem(glmmTMB(FFD_corr~temp_diff+(1|plot),
+                                         subset(data_transplants,year==2023)),                
+                                 glmmTMB(fitness_01~temp_diff+temp_diff_square+
+                                          FFD_corr+(1|plot),
+                                        subset(data_transplants,year==2023),
+                                        family="binomial"))
+```
+
+```{r}
+coefs(path_local_adapt_01_22_FFD)
+coefs(path_local_adapt_01_23_FFD)
+```
+
+# Session info
+
+```{r}
+sessionInfo()
+```

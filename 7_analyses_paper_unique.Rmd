@@ -1,0 +1,3045 @@
+---
+title: 'Analyses Cerastium transplants: Local adaptation'
+author: "Alicia Valdés"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  word_document:
+    toc: true
+    toc_depth: '4'
+  html_document:
+    toc: true
+    toc_depth: '4'
+    df_print: paged
+  pdf_document:
+    latex_engine: xelatex
+    toc: true
+    toc_depth: 4
+subtitle: Analyses with FFD
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+options(tibble.width = Inf)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+```{r load packages, include=FALSE}
+library(tidyverse)
+library(readxl)
+library(RColorBrewer)
+library(knitr)
+library(ggthemes)
+library(glmmTMB)
+library(lme4)
+library(lmerTest)
+library(car)
+library(sjPlot)
+library(ggeffects)
+library(performance)
+library(DHARMa)
+library(MASS)
+library(gridExtra)
+library(viridis)
+library(aster)
+library(ggpubr)
+library(piecewiseSEM)
+```
+
+```{r Define ggplot themes and palettes, include=FALSE}
+my_theme <- function(){
+  theme_base()+theme(plot.background=element_rect(fill="white", colour=NA))+
+  theme(legend.position="none")+theme(text=element_text(family="serif"))+
+  theme(plot.title = element_text(hjust =-0.06))
+}
+my_theme_legend <- function(){
+  theme_base()+theme(plot.background=element_rect(fill="white", colour=NA))+
+  theme(text=element_text(family="serif"))+
+  theme(plot.title = element_text(hjust =-0.06))
+}
+myPalette <- colorRampPalette(brewer.pal(11, "YlOrRd"))
+```
+
+# Read clean data from .csv files
+
+```{r}
+data_transplants <- read_csv("data/clean/data_transplants.csv")%>%
+  mutate_at(c("unique_id","heat_zone","group","mother","father","id","repl",
+              "plot","peak","fruit_coll","poll_type","crossing","F_NF_A",
+              "year"),as.factor)%>%
+  mutate_at(c("n_fl_stems","n_opened_fl","n_closed_buds","tot_fl_bodies",
+              "median_h","per_invert_herb","n_stems_grazed","n_closed_coll_fr",
+              "n_open_coll_fr","n_count_fr","n_tot_fr","n_seed_fr1",
+              "n_seed_fr2","n_seed_fr3","n_seed_fr4","rest_combined",
+              "n_tot_seed","tot_fl_bodies_corr"),as.integer)
+```
+
+# Check that temperatures for sires and dams coincide with temperatures in list of sires and dams:
+
+```{r}
+temps_dams_sires<-data_transplants%>%
+  dplyr::select(mother,father,temp_mother,temp_father)%>%
+  distinct()%>% # Removes duplicate rows
+  pivot_longer(cols=starts_with("temp"),names_to="type",values_to="temp")%>%
+  mutate(id = case_when(type=="temp_mother"~paste0("D",mother),
+                        type=="temp_father"~paste0("S",father)))%>%
+  dplyr::select(id,temp)
+# Read csv file with temperatures from sire and dam list
+temps_dams_sires_list<-read_csv("C:/Users/alici/Dropbox/SU/Projects/cerastium_greenhouse/data/clean/temps_dams_sires_list.csv")
+# Merge the data frames on the "id" column
+merged_data<-temps_dams_sires%>%
+  inner_join(temps_dams_sires_list,by="id",suffix=c("_data","_list"))
+# Check for discrepancies
+discrepancies<-merged_data%>%filter(temp_data!=temp_list)
+# View the discrepancies
+print(discrepancies)  # Two discrepancies
+```
+
+Correct discrepancies:
+
+Temperature for mother 24 should be 14.9, not 20.
+Temperature for father 320 should be 9.0, not 13.6.
+
+```{r}
+data_transplants <- data_transplants %>%
+  mutate(temp_mother = if_else(mother == 24, 14.9, temp_mother),
+         temp_father = if_else(father == 320, 9.0, temp_father))
+```
+
+Check again for discrepancies:
+
+```{r}
+temps_dams_sires<-data_transplants%>%
+  dplyr::select(mother,father,temp_mother,temp_father)%>%
+  distinct()%>% # Removes duplicate rows
+  pivot_longer(cols=starts_with("temp"),names_to="type",values_to="temp")%>%
+  mutate(id = case_when(type=="temp_mother"~paste0("D",mother),
+                        type=="temp_father"~paste0("S",father)))%>%
+  dplyr::select(id,temp)
+# Read csv file with temperatures from sire and dam list
+merged_data<-temps_dams_sires%>%
+  inner_join(temps_dams_sires_list,by="id",suffix=c("_data","_list"))
+# Check for discrepancies
+discrepancies<-merged_data%>%filter(temp_data!=temp_list)
+# View the discrepancies
+print(discrepancies)  # No discrepancies
+```
+
+# Calculate temperature difference
+
+Calculate temperature difference (actual value, not absolute!) between experienced temperature (temp) and mid-parental temperature.
+
+```{r}
+data_transplants<-data_transplants%>%
+  mutate(mean_temp_parents=(temp_mother+temp_father)/2,
+         temp_diff=temp-mean_temp_parents)
+hist(data_transplants$mean_temp_parents)
+hist(data_transplants$temp_diff)
+```
+
+When the temperature difference is positive --> planted in warmer places than their origin
+When the temperature difference is negative --> planted in colder places than their origin
+
+# Prediction 4 (from old paper 1)
+
+See if we use these analyses!
+
+"Divergent temperature-dependent selection has resulted in small-scale genetic differentiation and local adaptation along gradients of soil temperature, and this local adaptation involves flowering time."
+
+To test if plants are adapted to their local thermal environment, we regressed fitness on the difference in temperature between the transplantation site and the mean temperature of the parents’ sites of origin. 
+
+## Fitness
+
+### Models without phenology
+
+#### 2022
+
+```{r}
+model_local_adapt_22<-glmmTMB(n_tot_seed~temp_diff+(1|plot),
+                        subset(data_transplants,year==2022),family="nbinom2")
+model_local_adapt_22_zi<-glmmTMB(n_tot_seed~temp_diff+(1|plot),
+                                 ziformula=~.,
+                                 subset(data_transplants,year==2022),
+                                 family="nbinom2")
+summary(model_local_adapt_22)
+summary(model_local_adapt_22_zi)
+AIC(model_local_adapt_22,model_local_adapt_22_zi)
+```
+
+Model with zero inflation is best.
+
+Try with quadratic effect of temp_diff:
+
+```{r}
+model_local_adapt_22_zi_sq<-glmmTMB(n_tot_seed~temp_diff+I(temp_diff^2)+
+                                      (1|plot),
+                                    ziformula=~.,
+                                    subset(data_transplants,year==2022),
+                                    family="nbinom2")
+summary(model_local_adapt_22_zi_sq)
+AIC(model_local_adapt_22_zi,model_local_adapt_22_zi_sq)
+```
+
+Model with quadratic effect is best.
+
+```{r}
+plot(ggpredict(model_local_adapt_22_zi_sq,type="count",terms="temp_diff [all]"))  #NS
+plot(ggpredict(model_local_adapt_22_zi_sq,type="zi_prob",terms="temp_diff [all]")) #*
+```
+
+#### 2023
+
+```{r}
+model_local_adapt_23<-glmmTMB(n_tot_seed~temp_diff+(1|plot),
+                        subset(data_transplants,year==2023),family="nbinom2")
+model_local_adapt_23_zi<-glmmTMB(n_tot_seed~temp_diff+(1|plot),
+                                 ziformula=~.,
+                                 subset(data_transplants,year==2023),
+                                 family="nbinom2")
+summary(model_local_adapt_23)
+summary(model_local_adapt_23_zi)
+AIC(model_local_adapt_23,model_local_adapt_23_zi)
+```
+
+Model with zero inflation is best.
+
+Try with quadratic effect of temp_diff:
+
+```{r}
+model_local_adapt_23_zi_sq<-glmmTMB(n_tot_seed~temp_diff+I(temp_diff^2)+
+                                      (1|plot),
+                                    ziformula=~.,
+                                    subset(data_transplants,year==2023),
+                                    family="nbinom2")
+summary(model_local_adapt_23_zi_sq)
+AIC(model_local_adapt_23_zi,model_local_adapt_23_zi_sq)
+```
+
+Model with quadratic effect is best.
+
+```{r}
+plot(ggpredict(model_local_adapt_23_zi_sq,type="count",terms="temp_diff [all]")) #*
+plot(ggpredict(model_local_adapt_23_zi_sq,type="zi_prob",terms="temp_diff [all]")) #*
+```
+
+#### Diagnostics
+
+```{r}
+plot(simulateResiduals(model_local_adapt_22_zi_sq))
+plot(simulateResiduals(model_local_adapt_23_zi_sq))
+```
+
+Take as OK??
+
+### Models with phenology
+
+To test to what extent any such evidence of local adaptation to the thermal environment was mediated by differences in flowering time, we ran a model including also expressed flowering time of focal individuals. 
+
+If the effect of temperature difference on fitness is not significant when including flowering time, we can conclude that local adaptation is mediated by differences in flowering time?
+
+#### FFD
+
+##### 2022
+
+```{r}
+model_local_adapt_22_FFD<-glmmTMB(n_tot_seed~temp_diff+FFD_corr+(1|plot),
+                        subset(data_transplants,year==2022),family="nbinom2")
+model_local_adapt_22_zi_FFD<-glmmTMB(n_tot_seed~temp_diff+FFD_corr,
+                                     # +(1|plot), #NaNs in summary if plot 
+                                     # included in conditional model
+                                     # probably because of low variance explained
+                                 ziformula=~temp_diff+FFD_corr+(1|plot),
+                                 subset(data_transplants,year==2022),
+                                 family="nbinom2")
+summary(model_local_adapt_22_FFD)
+summary(model_local_adapt_22_zi_FFD)
+AIC(model_local_adapt_22_FFD,model_local_adapt_22_zi_FFD)
+```
+
+Try with quadratic effect of temp_diff:
+
+```{r}
+model_local_adapt_22_zi_FFD_sq<-glmmTMB(n_tot_seed~temp_diff+I(temp_diff^2)+
+                                          FFD_corr+(1|plot),
+                                    ziformula=~.,
+                                    subset(data_transplants,year==2022),
+                                    family="nbinom2")
+summary(model_local_adapt_22_zi_FFD_sq)
+AIC(model_local_adapt_22_zi_FFD,model_local_adapt_22_zi_FFD_sq)
+```
+
+Model with quadratic effect is worst. Use model without quadratic effect.
+
+```{r}
+plot(ggpredict(model_local_adapt_22_zi_FFD,type="count",terms="temp_diff [all]")) #NS 
+plot(ggpredict(model_local_adapt_22_zi_FFD,type="zi_prob",terms="temp_diff [all]")) #*
+plot(ggpredict(model_local_adapt_22_zi_FFD,type="count",terms="FFD_corr [all]")) #*
+plot(ggpredict(model_local_adapt_22_zi_FFD,type="zi_prob",terms="FFD_corr [all]")) #*
+```
+
+##### 2023
+
+```{r}
+model_local_adapt_23_FFD<-glmmTMB(n_tot_seed~temp_diff+FFD_corr+(1|plot),
+                        subset(data_transplants,year==2023),family="nbinom2")
+model_local_adapt_23_zi_FFD<-glmmTMB(n_tot_seed~temp_diff+FFD_corr+(1|plot),
+                                 ziformula=~.,
+                                 subset(data_transplants,year==2023),
+                                 family="nbinom2")
+summary(model_local_adapt_23_FFD)
+summary(model_local_adapt_23_zi_FFD)
+AIC(model_local_adapt_23_FFD,model_local_adapt_23_zi_FFD)
+```
+
+Try with quadratic effect of temp_diff:
+
+```{r}
+model_local_adapt_23_zi_FFD_sq<-glmmTMB(n_tot_seed~temp_diff+I(temp_diff^2)+
+                                          FFD_corr+(1|plot),
+                                    ziformula=~.,
+                                    subset(data_transplants,year==2023),
+                                    family="nbinom2")
+summary(model_local_adapt_23_zi_FFD_sq)
+AIC(model_local_adapt_23_zi_FFD,model_local_adapt_23_zi_FFD_sq)
+```
+
+Model with quadratic effect is best.
+
+```{r}
+plot(ggpredict(model_local_adapt_23_zi_FFD_sq,type="count",terms="temp_diff [all]")) #* 
+plot(ggpredict(model_local_adapt_23_zi_FFD_sq,type="zi_prob",terms="temp_diff [all]")) #NS
+plot(ggpredict(model_local_adapt_23_zi_FFD_sq,type="count",terms="FFD_corr [all]")) #*
+plot(ggpredict(model_local_adapt_23_zi_FFD_sq,type="zi_prob",terms="FFD_corr [all]")) #*
+```
+
+#### MeanFD
+
+##### 2022
+
+```{r}
+model_local_adapt_22_MeanFD<-glmmTMB(n_tot_seed~temp_diff+MeanFD+(1|plot),
+                        subset(data_transplants,year==2022),family="nbinom2")
+model_local_adapt_22_zi_MeanFD<-glmmTMB(n_tot_seed~temp_diff+MeanFD+(1|plot),
+                                 ziformula=~.,
+                                 subset(data_transplants,year==2022),
+                                 family="nbinom2")
+summary(model_local_adapt_22_MeanFD)
+summary(model_local_adapt_22_zi_MeanFD)
+AIC(model_local_adapt_22_FFD,model_local_adapt_22_zi_MeanFD)
+```
+
+Try with quadratic effect of temp_diff:
+
+```{r}
+model_local_adapt_22_zi_MeanFD_sq<-glmmTMB(n_tot_seed~temp_diff+I(temp_diff^2)+
+                                          MeanFD+(1|plot),
+                                    ziformula=~.,
+                                    subset(data_transplants,year==2022),
+                                    family="nbinom2")
+summary(model_local_adapt_22_zi_MeanFD_sq)
+AIC(model_local_adapt_22_zi_MeanFD,model_local_adapt_22_zi_MeanFD_sq)
+```
+
+Model with quadratic effect is worst. Use model without quadratic effect.
+
+```{r}
+plot(ggpredict(model_local_adapt_22_zi_MeanFD,type="count",terms="temp_diff [all]")) #* 
+plot(ggpredict(model_local_adapt_22_zi_MeanFD,type="zi_prob",terms="temp_diff [all]")) #*
+plot(ggpredict(model_local_adapt_22_zi_MeanFD,type="count",terms="MeanFD [all]")) #*
+plot(ggpredict(model_local_adapt_22_zi_MeanFD,type="zi_prob",terms="MeanFD [all]")) #*
+```
+
+##### 2023
+
+```{r}
+model_local_adapt_23_MeanFD<-glmmTMB(n_tot_seed~temp_diff+MeanFD+(1|plot),
+                        subset(data_transplants,year==2023),family="nbinom2")
+model_local_adapt_23_zi_MeanFD<-glmmTMB(n_tot_seed~temp_diff+MeanFD+(1|plot),
+                                 ziformula=~.,
+                                 subset(data_transplants,year==2023),
+                                 family="nbinom2")
+summary(model_local_adapt_23_MeanFD)
+summary(model_local_adapt_23_zi_MeanFD)
+AIC(model_local_adapt_23_MeanFD,model_local_adapt_23_zi_MeanFD)
+```
+
+Try with quadratic effect of temp_diff:
+
+```{r}
+model_local_adapt_23_zi_MeanFD_sq<-glmmTMB(n_tot_seed~temp_diff+I(temp_diff^2)+
+                                          MeanFD+(1|plot),
+                                    ziformula=~.,
+                                    subset(data_transplants,year==2023),
+                                    family="nbinom2")
+summary(model_local_adapt_23_zi_MeanFD_sq)
+AIC(model_local_adapt_23_zi_MeanFD,model_local_adapt_23_zi_MeanFD_sq)
+```
+
+Model with quadratic effect is worst. Use model without quadratic effect.
+
+```{r}
+plot(ggpredict(model_local_adapt_23_zi_MeanFD,type="count",terms="temp_diff [all]")) #NS 
+plot(ggpredict(model_local_adapt_23_zi_MeanFD,type="zi_prob",terms="temp_diff [all]")) #NS
+plot(ggpredict(model_local_adapt_23_zi_MeanFD,type="count",terms="MeanFD [all]")) #*
+plot(ggpredict(model_local_adapt_23_zi_MeanFD,type="zi_prob",terms="MeanFD [all]")) #*
+```
+
+### Comparison predictions
+
+```{r}
+legend1<-get_legend(
+  ggplot()+
+  # Without phenology
+  geom_ribbon(data=ggpredict(model_local_adapt_22_zi_sq,
+                             type="zi_prob",terms="temp_diff [all]"),
+              aes(x=x,y=1-predicted,ymin=1-conf.low,ymax=1-conf.high,
+                  fill="Without phenology"),alpha=0.25)+
+  geom_line(data=ggpredict(model_local_adapt_22_zi_sq,
+                           type="zi_prob",terms="temp_diff [all]"),
+            aes(x=x,y=1-predicted,color="Without phenology"))+
+  # With phenology (FFD)
+  geom_ribbon(data=ggpredict(model_local_adapt_22_zi_FFD,
+                             type="zi_prob",terms="temp_diff [all]"),
+              aes(x=x,y=1-predicted,ymin=1-conf.low,ymax=1-conf.high,
+                  fill="With FFD"),alpha=0.25)+
+  geom_line(data=ggpredict(model_local_adapt_22_zi_FFD,
+                           type="zi_prob",terms="temp_diff [all]"),
+            aes(x=x,y=1-predicted,color="With FFD"))+
+  # With phenology (MeanFD)
+  geom_ribbon(data=ggpredict(model_local_adapt_22_zi_MeanFD,
+                             type="zi_prob",terms="temp_diff [all]"),
+              aes(x=x,y=1-predicted,ymin=1-conf.low,ymax=1-conf.high,
+                  fill="With MeanFD"),alpha=0.25)+
+  geom_line(data=ggpredict(model_local_adapt_22_zi_MeanFD,
+                           type="zi_prob",terms="temp_diff [all]"),
+            aes(x=x,y=1-predicted,color="With MeanFD"))+
+  scale_fill_manual(values=c("Without phenology"="darkgreen",
+                             "With FFD"="deeppink",
+                             "With MeanFD"="darkslateblue"),
+                    name="Model type") +
+  scale_color_manual(values=c("Without phenology"="darkgreen",
+                              "With FFD"="deeppink",
+                              "With MeanFD"="darkslateblue"),
+                     name="Model type") +
+  my_theme_legend()+xlab("Temperature difference (ºC)")+
+  ylab("Predicted probability of having any seeds")+
+    theme(legend.position="top")
+)
+prob_22<-
+  # Probability of having any seeds
+  ggplot()+
+  # Without phenology
+  geom_ribbon(data=ggpredict(model_local_adapt_22_zi_sq,
+                             type="zi_prob",terms="temp_diff [all]"),
+              aes(x=x,y=1-predicted,ymin=1-conf.low,ymax=1-conf.high,
+                  fill="Without phenology"),alpha=0.25)+
+  geom_line(data=ggpredict(model_local_adapt_22_zi_sq,
+                           type="zi_prob",terms="temp_diff [all]"),
+            aes(x=x,y=1-predicted,color="Without phenology"))+
+  # With phenology (FFD)
+  geom_ribbon(data=ggpredict(model_local_adapt_22_zi_FFD,
+                             type="zi_prob",terms="temp_diff [all]"),
+              aes(x=x,y=1-predicted,ymin=1-conf.low,ymax=1-conf.high,
+                  fill="With FFD"),alpha=0.25)+
+  geom_line(data=ggpredict(model_local_adapt_22_zi_FFD,
+                           type="zi_prob",terms="temp_diff [all]"),
+            aes(x=x,y=1-predicted,color="With FFD"))+
+  # With phenology (MeanFD)
+  geom_ribbon(data=ggpredict(model_local_adapt_22_zi_MeanFD,
+                             type="zi_prob",terms="temp_diff [all]"),
+              aes(x=x,y=1-predicted,ymin=1-conf.low,ymax=1-conf.high,
+                  fill="With MeanFD"),alpha=0.25)+
+  geom_line(data=ggpredict(model_local_adapt_22_zi_MeanFD,
+                           type="zi_prob",terms="temp_diff [all]"),
+            aes(x=x,y=1-predicted,color="With MeanFD"))+
+  scale_fill_manual(values=c("Without phenology"="darkgreen",
+                             "With FFD"="deeppink",
+                             "With MeanFD"="darkslateblue"),
+                    name="Model type") +
+  scale_color_manual(values=c("Without phenology"="darkgreen",
+                              "With FFD"="deeppink",
+                              "With MeanFD"="darkslateblue"),
+                     name="Model type") +
+  my_theme()+xlab("Temperature difference (ºC)")+
+  ylab("Predicted probability of having any seeds")+ggtitle("A) 2022")
+count_22<-
+  # Total number of seeds
+  ggplot()+
+  # Without phenology
+  geom_ribbon(data=ggpredict(model_local_adapt_22_zi_sq,
+                             type="count",terms="temp_diff [all]"),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high,
+                  fill="Without phenology"),alpha=0.25)+
+  geom_line(data=ggpredict(model_local_adapt_22_zi_sq,
+                           type="count",terms="temp_diff [all]"),
+            aes(x=x,y=predicted,color="Without phenology"),linetype="dashed")+
+  # With phenology (FFD)
+  geom_ribbon(data=ggpredict(model_local_adapt_22_zi_FFD,
+                             type="count",terms="temp_diff [all]"),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high,
+                  fill="With FFD"),alpha=0.25)+
+  geom_line(data=ggpredict(model_local_adapt_22_zi_FFD,
+                           type="count",terms="temp_diff [all]"),
+            aes(x=x,y=predicted,color="With FFD"),linetype="dashed")+
+  # With phenology (MeanFD)
+  geom_ribbon(data=ggpredict(model_local_adapt_22_zi_MeanFD,
+                             type="count",terms="temp_diff [all]"),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high,
+                  fill="With MeanFD"),alpha=0.25)+
+  geom_line(data=ggpredict(model_local_adapt_22_zi_MeanFD,
+                           type="count",terms="temp_diff [all]"),
+            aes(x=x,y=predicted,color="With MeanFD"))+
+  scale_fill_manual(values=c("Without phenology"="darkgreen",
+                             "With FFD"="deeppink",
+                             "With MeanFD"="darkslateblue"),
+                    name="Model type") +
+  scale_color_manual(values=c("Without phenology"="darkgreen",
+                              "With FFD"="deeppink",
+                              "With MeanFD"="darkslateblue"),
+                     name="Model type") +
+  my_theme()+xlab("Temperature difference (ºC)")+
+  ylab("Total number of seeds")+ggtitle("B) 2022")
+prob_23<-
+  # Probability of having any seeds
+  ggplot()+
+  # Without phenology
+  geom_ribbon(data=ggpredict(model_local_adapt_23_zi_sq,
+                             type="zi_prob",terms="temp_diff [all]"),
+              aes(x=x,y=1-predicted,ymin=1-conf.low,ymax=1-conf.high,
+                  fill="Without phenology"),alpha=0.25)+
+  geom_line(data=ggpredict(model_local_adapt_23_zi_sq,
+                           type="zi_prob",terms="temp_diff [all]"),
+            aes(x=x,y=1-predicted,color="Without phenology"))+
+  # With phenology (FFD)
+  geom_ribbon(data=ggpredict(model_local_adapt_23_zi_FFD_sq,
+                             type="zi_prob",terms="temp_diff [all]"),
+              aes(x=x,y=1-predicted,ymin=1-conf.low,ymax=1-conf.high,
+                  fill="With FFD"),alpha=0.25)+
+  geom_line(data=ggpredict(model_local_adapt_23_zi_FFD_sq,
+                           type="zi_prob",terms="temp_diff [all]"),
+            aes(x=x,y=1-predicted,color="With FFD"),linetype="dashed")+
+  # With phenology (MeanFD)
+  geom_ribbon(data=ggpredict(model_local_adapt_23_zi_MeanFD,
+                             type="zi_prob",terms="temp_diff [all]"),
+              aes(x=x,y=1-predicted,ymin=1-conf.low,ymax=1-conf.high,
+                  fill="With MeanFD"),alpha=0.25)+
+  geom_line(data=ggpredict(model_local_adapt_23_zi_MeanFD,
+                           type="zi_prob",terms="temp_diff [all]"),
+            aes(x=x,y=1-predicted,color="With MeanFD"),linetype="dashed")+
+  scale_fill_manual(values=c("Without phenology"="darkgreen",
+                             "With FFD"="deeppink",
+                             "With MeanFD"="darkslateblue"),
+                    name="Model type") +
+  scale_color_manual(values=c("Without phenology"="darkgreen",
+                              "With FFD"="deeppink",
+                              "With MeanFD"="darkslateblue"),
+                     name="Model type") +
+  my_theme()+xlab("Temperature difference (ºC)")+
+  ylab("Predicted probability of having any seeds")+ggtitle("C) 2023")
+count_23<-
+  # Total number of seeds
+  ggplot()+
+  # Without phenology
+  geom_ribbon(data=ggpredict(model_local_adapt_23_zi_sq,
+                             type="count",terms="temp_diff [all]"),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high,
+                  fill="Without phenology"),alpha=0.25)+
+  geom_line(data=ggpredict(model_local_adapt_23_zi_sq,
+                           type="count",terms="temp_diff [all]"),
+            aes(x=x,y=predicted,color="Without phenology"))+
+  # With phenology (FFD)
+  geom_ribbon(data=ggpredict(model_local_adapt_23_zi_FFD_sq,
+                             type="count",terms="temp_diff [all]"),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high,
+                  fill="With FFD"),alpha=0.25)+
+  geom_line(data=ggpredict(model_local_adapt_23_zi_FFD_sq,
+                           type="count",terms="temp_diff [all]"),
+            aes(x=x,y=predicted,color="With FFD"))+
+  # With phenology (MeanFD)
+  geom_ribbon(data=ggpredict(model_local_adapt_23_zi_MeanFD,
+                             type="count",terms="temp_diff [all]"),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high,
+                  fill="With MeanFD"),alpha=0.25)+
+  geom_line(data=ggpredict(model_local_adapt_23_zi_MeanFD,
+                           type="count",terms="temp_diff [all]"),
+            aes(x=x,y=predicted,color="With MeanFD"),linetype="dashed")+
+  scale_fill_manual(values=c("Without phenology"="darkgreen",
+                             "With FFD"="deeppink",
+                             "With MeanFD"="darkslateblue"),
+                    name="Model type") +
+  scale_color_manual(values=c("Without phenology"="darkgreen",
+                              "With FFD"="deeppink",
+                              "With MeanFD"="darkslateblue"),
+                     name="Model type") +
+  my_theme()+xlab("Temperature difference (ºC)")+
+  ylab("Total number of seeds")+ggtitle("D) 2023")
+```
+
+```{r fig.height=10, fig.width=10}
+ggarrange(legend1,
+             grid.arrange(prob_22,prob_23,count_22,count_23,ncol=2),
+             ncol=1,heights=c(0.1,0.9))
+```
+
+
+## Fitness 0/1
+
+### Models without phenology
+
+Calculate fitness 0/1:
+
+```{r}
+data_transplants<-data_transplants%>%
+  mutate(fitness_01=ifelse(n_tot_seed>0,1,0))
+hist(data_transplants$fitness_01)
+```
+
+#### 2022
+
+```{r}
+model_local_adapt_01_22<-glmmTMB(fitness_01~temp_diff+(1|plot),
+                        subset(data_transplants,year==2022),family="binomial")
+model_local_adapt_01_22_sq<-glmmTMB(fitness_01~temp_diff+I(temp_diff^2)+
+                                      (1|plot),
+                                    subset(data_transplants,year==2022),
+                                    family="binomial")
+summary(model_local_adapt_01_22)
+summary(model_local_adapt_01_22_sq)
+AIC(model_local_adapt_01_22,model_local_adapt_01_22_sq)
+```
+
+Model with quadratic term is best
+
+```{r}
+plot(ggpredict(model_local_adapt_01_22_sq,terms="temp_diff[all]")) #*
+```
+
+#### 2023
+
+```{r}
+model_local_adapt_01_23<-glmmTMB(fitness_01~temp_diff+(1|plot),
+                        subset(data_transplants,year==2023),family="binomial")
+model_local_adapt_01_23_sq<-glmmTMB(fitness_01~temp_diff+I(temp_diff^2)+
+                                      (1|plot),
+                                    subset(data_transplants,year==2023),
+                                    family="binomial")
+summary(model_local_adapt_01_23)
+summary(model_local_adapt_01_23_sq)
+AIC(model_local_adapt_01_23,model_local_adapt_01_23_sq)
+```
+
+Model with quadratic term is best
+
+```{r}
+plot(ggpredict(model_local_adapt_01_23_sq,terms="temp_diff[all]")) #*
+```
+
+### Models with phenology
+
+#### FFD
+
+##### 2022
+
+```{r}
+model_local_adapt_01_22_FFD<-glmmTMB(fitness_01~temp_diff+FFD_corr+(1|plot),
+                        subset(data_transplants,year==2022),family="binomial")
+model_local_adapt_01_22_FFD_sq<-glmmTMB(fitness_01~temp_diff+I(temp_diff^2)+
+                                          FFD_corr+(1|plot),
+                                        subset(data_transplants,year==2022),
+                                        family="binomial")
+summary(model_local_adapt_01_22_FFD)
+summary(model_local_adapt_01_22_FFD_sq)
+AIC(model_local_adapt_01_22_FFD,model_local_adapt_01_22_FFD_sq)
+```
+
+Model with quadratic term is worst. Use model without quadratic term.
+
+```{r}
+plot(ggpredict(model_local_adapt_01_22_FFD,terms="temp_diff [all]")) #*
+plot(ggpredict(summary(model_local_adapt_01_22_FFD),terms="FFD_corr [all]")) #*
+```
+
+##### 2023
+
+```{r}
+model_local_adapt_01_23_FFD<-glmmTMB(fitness_01~temp_diff+FFD_corr+(1|plot),
+                        subset(data_transplants,year==2023),family="binomial")
+model_local_adapt_01_23_FFD_sq<-glmmTMB(fitness_01~temp_diff+I(temp_diff^2)+
+                                          FFD_corr+(1|plot),
+                                        subset(data_transplants,year==2023),
+                                        family="binomial")
+summary(model_local_adapt_01_23_FFD)
+summary(model_local_adapt_01_23_FFD_sq)
+AIC(model_local_adapt_01_23_FFD,model_local_adapt_01_23_FFD_sq)
+```
+
+Model with quadratic term is worst. Use model without quadratic term.
+
+```{r}
+plot(ggpredict(model_local_adapt_01_23_FFD,terms="temp_diff [all]")) #NS
+plot(ggpredict(model_local_adapt_01_23_FFD,terms="FFD_corr [all]")) #*
+```
+
+#### MeanFD
+
+##### 2022
+
+```{r}
+model_local_adapt_01_22_MeanFD<-glmmTMB(fitness_01~temp_diff+MeanFD+(1|plot),
+                        subset(data_transplants,year==2022),family="binomial")
+model_local_adapt_01_22_MeanFD_sq<-glmmTMB(fitness_01~temp_diff+I(temp_diff^2)+
+                                             MeanFD+(1|plot),
+                                           subset(data_transplants,year==2022),
+                                           family="binomial")
+summary(model_local_adapt_01_22_MeanFD)
+summary(model_local_adapt_01_22_MeanFD_sq)
+AIC(model_local_adapt_01_22_MeanFD,model_local_adapt_01_22_MeanFD_sq)
+```
+
+Model with quadratic term is worst. Use model without quadratic term.
+
+```{r}
+plot(ggpredict(model_local_adapt_01_22_MeanFD,terms="temp_diff [all]")) #*
+plot(ggpredict(model_local_adapt_01_22_MeanFD,terms="MeanFD [all]")) #*
+```
+
+##### 2023
+
+```{r}
+model_local_adapt_01_23_MeanFD<-glmmTMB(fitness_01~temp_diff+MeanFD+(1|plot),
+                        subset(data_transplants,year==2023),family="binomial")
+model_local_adapt_01_23_MeanFD_sq<-glmmTMB(fitness_01~temp_diff+I(temp_diff^2)+
+                                             MeanFD+(1|plot),
+                                           subset(data_transplants,year==2023),
+                                           family="binomial")
+summary(model_local_adapt_01_23_MeanFD)
+summary(model_local_adapt_01_23_MeanFD_sq)
+AIC(model_local_adapt_01_23_MeanFD,model_local_adapt_01_23_MeanFD_sq)
+```
+
+Model with quadratic term is worst. Use model without quadratic term.
+
+```{r}
+plot(ggpredict(model_local_adapt_01_22_MeanFD,terms="temp_diff [all]")) #NS
+plot(ggpredict(model_local_adapt_01_22_MeanFD,terms="MeanFD [all]")) #*
+```
+
+### Comparison predictions
+
+```{r}
+legend2<-get_legend(
+  ggplot()+
+  # Without phenology
+  geom_ribbon(data=ggpredict(model_local_adapt_01_22_sq,
+                             terms="temp_diff [all]"),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high,
+                  fill="Without phenology"),alpha=0.25)+
+  geom_line(data=ggpredict(model_local_adapt_01_22_sq,terms="temp_diff [all]"),
+            aes(x=x,y=predicted,color="Without phenology"))+
+  # With phenology (FFD)
+  geom_ribbon(data=ggpredict(model_local_adapt_01_22_FFD,
+                             terms="temp_diff [all]"),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high,
+                  fill="With FFD"),alpha=0.25)+
+  geom_line(data=ggpredict(model_local_adapt_01_22_FFD,terms="temp_diff [all]"),
+            aes(x=x,y=predicted,color="With FFD"))+
+  # With phenology (MeanFD)
+  geom_ribbon(data=ggpredict(model_local_adapt_01_22_MeanFD,
+                             terms="temp_diff [all]"),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high,
+                  fill="With MeanFD"),alpha=0.25)+
+  geom_line(data=ggpredict(model_local_adapt_01_22_MeanFD,terms="temp_diff [all]"),
+            aes(x=x,y=predicted,color="With MeanFD"))+
+  scale_fill_manual(values=c("Without phenology"="darkgreen",
+                             "With FFD"="deeppink",
+                             "With MeanFD"="darkslateblue"),
+                    name="Model type") +
+  scale_color_manual(values=c("Without phenology"="darkgreen",
+                              "With FFD"="deeppink",
+                              "With MeanFD"="darkslateblue"),
+                     name="Model type") +
+  my_theme_legend()+xlab("Temperature difference (ºC)")+
+  ylab("Predicted probability of having any seeds")+ggtitle("A) 2022")+
+    theme(legend.position="top")
+)
+prob_22_01<-
+  # Probability of having any seeds
+  ggplot()+
+  # Without phenology
+  geom_ribbon(data=ggpredict(model_local_adapt_01_22_sq,
+                             terms="temp_diff [all]"),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high,
+                  fill="Without phenology"),alpha=0.25)+
+  geom_line(data=ggpredict(model_local_adapt_01_22_sq,terms="temp_diff [all]"),
+            aes(x=x,y=predicted,color="Without phenology"))+
+  # With phenology (FFD)
+  geom_ribbon(data=ggpredict(model_local_adapt_01_22_FFD,
+                             terms="temp_diff [all]"),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high,
+                  fill="With FFD"),alpha=0.25)+
+  geom_line(data=ggpredict(model_local_adapt_01_22_FFD,terms="temp_diff [all]"),
+            aes(x=x,y=predicted,color="With FFD"))+
+  # With phenology (MeanFD)
+  geom_ribbon(data=ggpredict(model_local_adapt_01_22_MeanFD,
+                             terms="temp_diff [all]"),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high,
+                  fill="With MeanFD"),alpha=0.25)+
+  geom_line(data=ggpredict(model_local_adapt_01_22_MeanFD,terms="temp_diff [all]"),
+            aes(x=x,y=predicted,color="With MeanFD"))+
+  scale_fill_manual(values=c("Without phenology"="darkgreen",
+                             "With FFD"="deeppink",
+                             "With MeanFD"="darkslateblue"),
+                    name="Model type") +
+  scale_color_manual(values=c("Without phenology"="darkgreen",
+                              "With FFD"="deeppink",
+                              "With MeanFD"="darkslateblue"),
+                     name="Model type") +
+  my_theme()+xlab("Temperature difference (ºC)")+
+  ylab("Predicted probability of having any seeds")+ggtitle("A) 2022")
+prob_23_01<-
+  # Probability of having any seeds
+  ggplot()+
+  # Without phenology
+  geom_ribbon(data=ggpredict(model_local_adapt_01_23_sq,
+                             terms="temp_diff [all]"),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high,
+                  fill="Without phenology"),alpha=0.25)+
+  geom_line(data=ggpredict(model_local_adapt_01_23_sq,terms="temp_diff [all]"),
+            aes(x=x,y=predicted,color="Without phenology"))+
+  # With phenology (FFD)
+  geom_ribbon(data=ggpredict(model_local_adapt_01_23_FFD,
+                             terms="temp_diff [all]"),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high,
+                  fill="With FFD"),alpha=0.25)+
+  geom_line(data=ggpredict(model_local_adapt_01_23_FFD,terms="temp_diff [all]"),
+            aes(x=x,y=predicted,color="With FFD"),linetype="dashed")+
+  # With phenology (MeanFD)
+  geom_ribbon(data=ggpredict(model_local_adapt_01_22_MeanFD,
+                             terms="temp_diff [all]"),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high,
+                  fill="With MeanFD"),alpha=0.25)+
+  geom_line(data=ggpredict(model_local_adapt_01_22_MeanFD,
+                           terms="temp_diff [all]"),
+            aes(x=x,y=predicted,color="With MeanFD"),linetype="dashed")+
+  scale_fill_manual(values=c("Without phenology"="darkgreen",
+                             "With FFD"="deeppink",
+                             "With MeanFD"="darkslateblue"),
+                    name="Model type") +
+  scale_color_manual(values=c("Without phenology"="darkgreen",
+                              "With FFD"="deeppink",
+                              "With MeanFD"="darkslateblue"),
+                     name="Model type") +
+  my_theme()+xlab("Temperature difference (ºC)")+
+  ylab("Predicted probability of having any seeds")+ggtitle("B) 2023")
+```
+
+```{r fig.height=5, fig.width=10}
+ggarrange(legend2,
+             grid.arrange(prob_22_01,prob_23_01,ncol=2),
+             ncol=1,heights=c(0.1,0.9))
+```
+
+## Path analysis (REVISE)
+
+[Possibly do a small path-model with direct and indirect, via phenology, effects of origin on fitness?] 
+
+### Fitness
+
+#### FFD
+
+```{r}
+data_transplants$temp_diff_square<-(data_transplants$temp_diff)^2
+```
+
+```{r}
+path_local_adapt_22_FFD<-psem(glmmTMB(FFD_corr~temp_diff+(1|plot),
+                                      subset(data_transplants,year==2022)),
+                              glmmTMB(n_tot_seed~temp_diff+temp_diff_square+
+                                          FFD_corr+(1|plot),
+                                    ziformula=~.,
+                                    subset(data_transplants,year==2022),
+                                    family="nbinom2"))
+path_local_adapt_23_FFD<-psem(glmmTMB(FFD_corr~temp_diff+(1|plot),
+                                      subset(data_transplants,year==2023)),
+                              glmmTMB(n_tot_seed~temp_diff+temp_diff_square+
+                                          FFD_corr+(1|plot),
+                                    ziformula=~.,
+                                    subset(data_transplants,year==2023),
+                                    family="nbinom2"))
+```
+
+```{r}
+coefs(path_local_adapt_22_FFD)
+coefs(path_local_adapt_23_FFD)
+```
+
+### Fitness 0/1
+
+#### FFD
+
+```{r}
+path_local_adapt_01_22_FFD<-psem(glmmTMB(FFD_corr~temp_diff+(1|plot),
+                                         subset(data_transplants,year==2022)),
+                                 glmmTMB(fitness_01~temp_diff+
+                                          FFD_corr+(1|plot),
+                                        subset(data_transplants,year==2022),
+                                        family="binomial"))
+path_local_adapt_01_23_FFD<-psem(glmmTMB(FFD_corr~temp_diff+(1|plot),
+                                         subset(data_transplants,year==2023)),                
+                                 glmmTMB(fitness_01~temp_diff+
+                                          FFD_corr+(1|plot),
+                                        subset(data_transplants,year==2023),
+                                        family="binomial"))
+```
+
+```{r}
+coefs(path_local_adapt_01_22_FFD)
+coefs(path_local_adapt_01_23_FFD)
+```
+
+# Survival
+
+```{r}
+data_transplants_22<-data_transplants%>%
+  filter(year==2022)%>%
+  mutate(surv=ifelse(is.na(F_NF_A),0,1))
+not_surv_22<-data_transplants_22%>%filter(surv==0)
+data_transplants_23<-data_transplants%>%
+  filter(year==2023)%>%
+  mutate(surv=ifelse(is.na(F_NF_A),0,1))%>%
+  # If the plant did not survive in 2022, set NA for surv in 2023
+  mutate(surv=ifelse(unique_id %in% not_surv_22$unique_id,NA,surv))%>%
+  # Correct errors: these below are in not_surv_22,
+  # but actually there is data for 2023!
+  mutate(surv=ifelse(unique_id %in% c("Hot_10_a","Hot_30_a","Hot_45_a",
+                                      "Hot_9_d","Hot_88_a","Hot_125_b"),1,surv))
+data_transplants<-rbind(data_transplants_22,data_transplants_23)
+with(subset(data_transplants,year==2022),table(surv))
+with(subset(data_transplants,year==2023),table(surv))
+```
+
+Of 858 plants planted in 2021, 808 survived in 2022. Of the 808 that survived in 2022, 530 survived in 2023
+
+## Models
+
+Effect of pollination type?
+
+```{r}
+mod_surv_poll_22<-glmmTMB(surv~poll_type+(1|plot),
+                          data_transplants%>%filter(year==2022),
+                          family="binomial")
+mod_surv_poll_23<-glmmTMB(surv~poll_type+(1|plot),
+                          data_transplants%>%filter(year==2023),
+                          family="binomial")
+summary(mod_surv_poll_22)
+summary(mod_surv_poll_23)
+```
+
+No effect of pollination type, so we do not include it in further models.
+
+```{r}
+mod_surv_22<-glmmTMB(surv~temp+temp_diff+ I(temp_diff^2)+
+                       (1|plot),
+                     data_transplants%>%filter(year==2022),
+                     family="binomial")
+mod_surv_23<-glmmTMB(surv~temp+temp_diff+I(temp_diff^2)+(1|plot),
+                     data_transplants%>%filter(year==2023),
+                     family="binomial")
+summary(mod_surv_22)
+summary(mod_surv_23)
+```
+
+## Predictions
+
+```{r}
+ggplot()+
+  geom_point(data=data_transplants,aes(x=temp,y=surv,color=year))+
+  geom_ribbon(data=ggpredict(mod_surv_22,terms=c("temp[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#F8766D",alpha=0.2)+
+  geom_line(data=ggpredict(mod_surv_22,terms=c("temp[all]")),
+            aes(x=x,y=predicted),color="#F8766D",size=1)+
+  geom_ribbon(data=ggpredict(mod_surv_23,terms=c("temp[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#00BFC4",alpha=0.2)+
+  geom_line(data=ggpredict(mod_surv_23,terms=c("temp[all]")),
+            aes(x=x,y=predicted),color="#00BFC4",size=1)+
+  my_theme_legend()+xlab("Temperature at planting site (ºC)")+
+  ylab("Probability of survival")
+ggplot()+
+  geom_point(data=data_transplants,aes(x=temp_diff,y=surv,color=year))+
+  geom_ribbon(data=ggpredict(mod_surv_22,terms=c("temp_diff[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#F8766D",alpha=0.2)+
+  geom_line(data=ggpredict(mod_surv_22,terms=c("temp_diff[all]")),
+            aes(x=x,y=predicted),color="#F8766D",size=1,linetype="dashed")+
+  geom_ribbon(data=ggpredict(mod_surv_23,terms=c("temp_diff[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#00BFC4",alpha=0.2)+
+  geom_line(data=ggpredict(mod_surv_23,terms=c("temp_diff[all]")),
+            aes(x=x,y=predicted),color="#00BFC4",size=1)+
+  my_theme_legend()+xlab("Temperature difference (ºC)")+
+  ylab("Probability of survival")
+```
+
+## Diagnostics
+
+```{r}
+plot(simulateResiduals(mod_surv_22))
+plot(simulateResiduals(mod_surv_23))
+```
+
+# Median height of flowering stem
+
+```{r}
+hist(subset(data_transplants,year==2022)$median_h)
+hist(subset(data_transplants,year==2023)$median_h)
+```
+
+Effect of pollination type?
+
+```{r}
+mod_median_h_poll_22<-glmmTMB(median_h~poll_type+(1|plot),
+                          data_transplants%>%filter(year==2022))
+mod_median_h_poll_23<-glmmTMB(median_h~poll_type+(1|plot),
+                          data_transplants%>%filter(year==2023))
+summary(mod_median_h_poll_22)
+summary(mod_median_h_poll_23)
+```
+
+Significant effect of poll_type in 2023 --> include in further models (so far as fixed effect).
+
+```{r}
+mod_median_h_22<-glmmTMB(median_h~temp+temp_diff+I(temp_diff^2)+ 
+                           (1|plot),data_transplants%>%filter(year==2022))
+mod_median_h_23_pollf<-glmmTMB(median_h~temp+temp_diff+I(temp_diff^2)+ 
+                                 poll_type+(1|plot),
+                               data_transplants%>%filter(year==2023))
+summary(mod_median_h_22)
+summary(mod_median_h_23_pollf)
+```
+
+## Predictions
+
+```{r}
+ggplot()+
+  geom_jitter(data=data_transplants%>%filter(year==2023),
+             aes(x=poll_type,y=median_h),width=0.05,alpha=0.1)+
+  geom_point(data=ggpredict(mod_median_h_23_pollf,terms=c("poll_type")),
+             aes(x=x,y=predicted),size=3)+
+  geom_errorbar(data=ggpredict(mod_median_h_23_pollf,terms=c("poll_type")),
+             aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),width=0.1)+
+  my_theme()+xlab("Pollination type")+ylab("Median height")+ggtitle("2023")
+```
+
+## Diagnostics
+
+```{r}
+plot(simulateResiduals(mod_median_h_22))
+plot(simulateResiduals(mod_median_h_23_pollf))
+```
+
+# Probability of flowering
+
+```{r}
+data_transplants<-data_transplants%>%
+  mutate(flowering=ifelse(F_NF_A=="F",1,ifelse(F_NF_A=="NF",0,NA)))
+with(data_transplants,table(year,flowering))
+```
+ 
+Of 808 plants that survived in 2022, 603 flowered and 204 did not flower (and 1 was aborted, not used here). 4 were grazed before they peaked, they are included as flowering here.
+Of 530 plants that survived in 2023, 411 flowered and 119 did not flower.
+
+Does pollination type have an effect on probability of flowering?
+
+```{r}
+mod_flowering_poll_22<-glmmTMB(flowering~poll_type+(1|plot),
+                          data_transplants%>%filter(year==2022),
+                          family="binomial")
+mod_flowering_poll_23<-glmmTMB(flowering~poll_type+(1|plot),
+                          data_transplants%>%filter(year==2023),
+                          family="binomial")
+summary(mod_flowering_poll_22)
+summary(mod_flowering_poll_23)
+nobs(mod_flowering_poll_22)
+nobs(mod_flowering_poll_23)
+```
+
+Significant effect of poll_type in both years --> include in further models (for far as fixed).
+
+```{r}
+mod_flowering_22_pollf<-glmmTMB(flowering~temp+temp_diff+I(temp_diff^2)+ 
+                                  poll_type+(1|plot),
+                                data_transplants%>%filter(year==2022),
+                                family="binomial")
+mod_flowering_23_pollf<-glmmTMB(flowering~temp+temp_diff+I(temp_diff^2)+ 
+                                  poll_type+(1|plot),
+                                data_transplants%>%filter(year==2023),
+                                family="binomial")
+summary(mod_flowering_22_pollf)
+summary(mod_flowering_23_pollf)
+```
+ 
+
+## Predictions
+
+```{r}
+ggplot()+
+  geom_point(data=data_transplants,aes(x=temp,y=flowering,color=year))+
+  geom_ribbon(data=ggpredict(mod_flowering_22_pollf,terms=c("temp[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#F8766D",alpha=0.2)+
+  geom_line(data=ggpredict(mod_flowering_22_pollf,terms=c("temp[all]")),
+            aes(x=x,y=predicted),color="#F8766D",size=1)+
+  geom_ribbon(data=ggpredict(mod_flowering_23_pollf,terms=c("temp[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#00BFC4",alpha=0.2)+
+  geom_line(data=ggpredict(mod_flowering_23_pollf,terms=c("temp[all]")),
+            aes(x=x,y=predicted),color="#00BFC4",size=1)+
+  my_theme_legend()+xlab("Temperature at planting site (ºC)")+
+  ylab("Probability of flowering")
+grid.arrange(
+  ggplot()+
+    geom_jitter(data=data_transplants%>%filter(year==2022),
+                aes(x=poll_type,y=flowering),width=0.05,alpha=0.1)+
+    geom_point(data=ggpredict(mod_flowering_22_pollf,terms=c("poll_type[all]")),
+               aes(x=x,y=predicted),size=3)+
+    geom_errorbar(data=ggpredict(mod_flowering_22_pollf,terms=c("poll_type[all]")),
+                  aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+                  width=0.1)+
+    my_theme()+xlab("Pollination type")+ylab("Probability of flowering")+
+    ggtitle("2022"),
+  ggplot()+
+    geom_jitter(data=data_transplants%>%filter(year==2023),
+                aes(x=poll_type,y=flowering),width=0.05,alpha=0.1)+
+    geom_point(data=ggpredict(mod_flowering_23_pollf,terms=c("poll_type[all]")),
+               aes(x=x,y=predicted),size=3)+
+    geom_errorbar(data=ggpredict(mod_flowering_23_pollf,terms=c("poll_type[all]")),
+                  aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+                  width=0.1)+
+    my_theme()+xlab("Pollination type")+ylab("Probability of flowering")+
+    ggtitle("2023"),
+ncol=2)
+```
+## Diagnostics
+
+```{r}
+plot(simulateResiduals(mod_flowering_22_pollf))
+plot(simulateResiduals(mod_flowering_23_pollf))
+```
+
+# Number of flowers
+
+Correct tot_fl_bodies to tot_fl_bodies_corr, to be at least as high as n_tot_fr.
+
+```{r}
+nrow(data_transplants%>%filter(n_tot_fr>tot_fl_bodies))
+```
+
+221 cases where total number of fruits is larger than total number of flowering bodies.
+
+```{r}
+data_transplants<-data_transplants%>%
+  mutate(tot_fl_bodies_corr=ifelse(n_tot_fr>tot_fl_bodies,n_tot_fr,
+                                   tot_fl_bodies),
+         diff_fr_fl=n_tot_fr-tot_fl_bodies)
+```
+
+Histogram of differences:
+
+```{r}
+hist(data_transplants$diff_fr_fl)
+```
+
+Negative differences: more flowers than fruits - OK
+Positive differences: more fruits than flowers - not OK --> corrected
+
+```{r}
+hist(subset(data_transplants,year==2022)$tot_fl_bodies_corr)
+hist(subset(data_transplants,year==2022&flowering==1)$tot_fl_bodies_corr)
+hist(subset(data_transplants,year==2023)$tot_fl_bodies_corr)
+hist(subset(data_transplants,year==2023&flowering==1)$tot_fl_bodies_corr)
+```
+
+Models for number of flowers in those that flowered (flowering=1).
+
+Does pollination type have an effect on number of flowers?
+
+```{r}
+mod_nfl_poll_22<-glmmTMB(tot_fl_bodies_corr~poll_type+(1|plot),
+                          data_transplants%>%filter(year==2022&flowering==1),
+                          family="nbinom2") # nbinom2 lower AIC than poisson
+mod_nfl_poll_23<-glmmTMB(tot_fl_bodies_corr~poll_type+(1|plot),
+                          data_transplants%>%filter(year==2023&flowering==1),
+                          family="nbinom2") # nbinom2 lower AIC than poisson
+summary(mod_nfl_poll_22)
+summary(mod_nfl_poll_23)
+nobs(mod_nfl_poll_22)
+nobs(mod_nfl_poll_23)
+```
+
+Significant effect of poll_type in both years --> include in further models (so far as fixed).
+
+### Without median_h
+
+```{r}
+mod_nfl_22_pollf<-glmmTMB(tot_fl_bodies_corr~temp+temp_diff+
+                            I(temp_diff^2)+poll_type+(1|plot),
+                          data_transplants%>%filter(year==2022&flowering==1),
+                          family="nbinom2")
+mod_nfl_23_pollf<-glmmTMB(tot_fl_bodies_corr~temp+temp_diff+I(temp_diff^2)+ 
+                            poll_type+(1|plot),
+                          data_transplants%>%filter(year==2023&flowering==1),
+                          family="nbinom2")
+summary(mod_nfl_22_pollf)
+summary(mod_nfl_23_pollf)
+``` 
+
+
+
+#### Predictions
+
+```{r}
+ggplot()+
+  #geom_point(data=data_transplants,aes(x=temp,y=tot_fl_bodies_corr,color=year))+
+  geom_ribbon(data=ggpredict(mod_nfl_22_pollf,terms=c("temp[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#F8766D",alpha=0.2)+
+  geom_line(data=ggpredict(mod_nfl_22_pollf,terms=c("temp[all]")),
+            aes(x=x,y=predicted),color="#F8766D",size=1)+
+  geom_ribbon(data=ggpredict(mod_nfl_23_pollf,terms=c("temp[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#00BFC4",alpha=0.2)+
+  geom_line(data=ggpredict(mod_nfl_23_pollf,terms=c("temp[all]")),
+            aes(x=x,y=predicted),color="#00BFC4",size=1,linetype="dashed")+
+  my_theme_legend()+xlab("Temperature at planting site (ºC)")+
+  ylab("Total number of flowers")
+ggplot()+
+  #geom_point(data=data_transplants,aes(x=temp_diff,y=tot_fl_bodies_corr,color=year))+
+  geom_ribbon(data=ggpredict(mod_nfl_22_pollf,terms=c("temp_diff[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#F8766D",alpha=0.2)+
+  geom_line(data=ggpredict(mod_nfl_22_pollf,terms=c("temp_diff[all]")),
+            aes(x=x,y=predicted),color="#F8766D",size=1)+
+  geom_ribbon(data=ggpredict(mod_nfl_23_pollf,terms=c("temp_diff[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#00BFC4",alpha=0.2)+
+  geom_line(data=ggpredict(mod_nfl_23_pollf,terms=c("temp_diff[all]")),
+            aes(x=x,y=predicted),color="#00BFC4",size=1)+
+  my_theme_legend()+xlab("Temperature difference (ºC)")+
+  ylab("Total number of flowers")
+grid.arrange(
+  ggplot()+
+    #geom_jitter(data=data_transplants%>%filter(year==2022),
+    #            aes(x=poll_type,y=tot_fl_bodies_corr),width=0.05,alpha=0.1)+
+    geom_point(data=ggpredict(mod_nfl_22_pollf,terms=c("poll_type[all]")),
+               aes(x=x,y=predicted),size=3)+
+    geom_errorbar(data=ggpredict(mod_nfl_22_pollf,terms=c("poll_type[all]")),
+                  aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+                  width=0.1)+
+    my_theme_legend()+xlab("Pollination type")+ylab("Total number of flowers")+
+    ggtitle("2022"),
+  ggplot()+
+    #geom_jitter(data=data_transplants%>%filter(year==2023),
+    #            aes(x=poll_type,y=tot_fl_bodies_corr),width=0.05,alpha=0.1)+
+    geom_point(data=ggpredict(mod_nfl_23_pollf,terms=c("poll_type[all]")),
+               aes(x=x,y=predicted),size=3)+
+    geom_errorbar(data=ggpredict(mod_nfl_23_pollf,terms=c("poll_type[all]")),
+                  aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+                  width=0.1)+
+    my_theme_legend()+xlab("Pollination type")+ylab("Total number of flowers")+
+    ggtitle("2023"),
+ncol=2)
+```
+
+#### Diagnostics
+
+```{r}
+plot(simulateResiduals(mod_nfl_22_pollf))
+testDispersion(simulateResiduals(mod_nfl_22_pollf),alternative="greater")
+plot(simulateResiduals(mod_nfl_23_pollf))
+testDispersion(simulateResiduals(mod_nfl_23_pollf),alternative="greater")
+```
+
+### With median_h
+
+```{r}
+mod_nfl_22_mh_pollf<-glmmTMB(tot_fl_bodies_corr~temp+temp_diff+I(temp_diff^2)+ 
+                               median_h+
+                               poll_type+(1|plot),
+                             data_transplants%>%filter(year==2022&flowering==1),
+                             family="nbinom2")
+mod_nfl_23_mh_pollf<-glmmTMB(tot_fl_bodies_corr~temp+temp_diff+I(temp_diff^2)+ 
+                               median_h+
+                               poll_type+(1|plot),
+                             data_transplants%>%filter(year==2023&flowering==1),
+                             family="nbinom2")
+summary(mod_nfl_22_mh_pollf)
+summary(mod_nfl_23_mh_pollf)
+``` 
+
+#### Predictions
+
+```{r}
+ggplot()+
+  #geom_point(data=data_transplants,aes(x=temp,y=tot_fl_bodies_corr,color=year))+
+  geom_ribbon(data=ggpredict(mod_nfl_22_mh_pollf,terms=c("temp[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#F8766D",alpha=0.2)+
+  geom_line(data=ggpredict(mod_nfl_22_mh_pollf,terms=c("temp[all]")),
+            aes(x=x,y=predicted),color="#F8766D",size=1)+
+  geom_ribbon(data=ggpredict(mod_nfl_23_mh_pollf,terms=c("temp[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#00BFC4",alpha=0.2)+
+  geom_line(data=ggpredict(mod_nfl_23_mh_pollf,terms=c("temp[all]")),
+            aes(x=x,y=predicted),color="#00BFC4",size=1,linetype="dashed")+
+  my_theme_legend()+xlab("Temperature at planting site (ºC)")+
+  ylab("Total number of flowers")
+ggplot()+
+  #geom_point(data=data_transplants,aes(x=temp_diff,y=tot_fl_bodies_corr,color=year))+
+  geom_ribbon(data=ggpredict(mod_nfl_22_mh_pollf,terms=c("temp_diff[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#F8766D",alpha=0.2)+
+  geom_line(data=ggpredict(mod_nfl_22_mh_pollf,terms=c("temp_diff[all]")),
+            aes(x=x,y=predicted),color="#F8766D",size=1)+
+  geom_ribbon(data=ggpredict(mod_nfl_23_mh_pollf,terms=c("temp_diff[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#00BFC4",alpha=0.2)+
+  geom_line(data=ggpredict(mod_nfl_23_mh_pollf,terms=c("temp_diff[all]")),
+            aes(x=x,y=predicted),color="#00BFC4",size=1)+
+  my_theme_legend()+xlab("Temperature difference (ºC)")+
+  ylab("Total number of flowers")
+grid.arrange(
+  ggplot()+
+    #geom_jitter(data=data_transplants%>%filter(year==2022),
+    #            aes(x=poll_type,y=tot_fl_bodies_corr),width=0.05,alpha=0.1)+
+    geom_point(data=ggpredict(mod_nfl_22_mh_pollf,terms=c("poll_type[all]")),
+               aes(x=x,y=predicted),size=3)+
+    geom_errorbar(data=ggpredict(mod_nfl_22_mh_pollf,terms=c("poll_type[all]")),
+                  aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+                  width=0.1)+
+    my_theme()+xlab("Pollination type")+ylab("Total number of flowers")+
+    ggtitle("2022"),
+  ggplot()+
+    #geom_jitter(data=data_transplants%>%filter(year==2023),
+    #            aes(x=poll_type,y=tot_fl_bodies_corr),width=0.05,alpha=0.1)+
+    geom_point(data=ggpredict(mod_nfl_23_mh_pollf,terms=c("poll_type[all]")),
+               aes(x=x,y=predicted),size=3)+
+    geom_errorbar(data=ggpredict(mod_nfl_23_mh_pollf,terms=c("poll_type[all]")),
+                  aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+                  width=0.1)+
+    my_theme()+xlab("Pollination type")+ylab("Total number of flowers")+
+    ggtitle("2023"),
+ncol=2)
+```
+
+#### Diagnostics
+
+```{r}
+plot(simulateResiduals(mod_nfl_22_mh_pollf))
+testDispersion(simulateResiduals(mod_nfl_22_mh_pollf),alternative="greater")
+plot(simulateResiduals(mod_nfl_23_mh_pollf))
+testDispersion(simulateResiduals(mod_nfl_23_mh_pollf),alternative="greater")
+```
+
+# TRY: Probability of flowering + n flowers (ZI models)
+
+Convergence problems, NAs in the model output.
+
+# Probability of fruiting
+
+```{r}
+data_transplants<-data_transplants%>%
+  mutate(fruiting=ifelse(surv==0|is.na(surv),NA, 
+                         # NA for plants that did not survive
+                         ifelse(F_NF_A=="A"|F_NF_A=="NF",NA, 
+                                # NA for plants that aborted or did not flower
+                                ifelse(is.na(n_tot_fr),NA,
+                                       # NA for plants where n_tot_fr is NA
+                                       ifelse(n_tot_fr>0,1,0))))) 
+# 1/0 for plants that produced / did not produce fruits
+table(subset(data_transplants,year==2022)$fruiting)
+table(subset(data_transplants,year==2023)$fruiting)
+hist(data_transplants$fruiting)
+```
+
+Of 603 plants that flowered in 2022, 582 produced fruits and 21 did not produce fruits.
+Of 411 plants that flowered in 2022, 398 produced fruits and 13 did not produce fruits.
+
+Does pollination type have an effect on probability of fruiting?
+
+```{r}
+mod_fruiting_poll_22<-glmmTMB(fruiting~poll_type+(1|plot),
+                          data_transplants%>%filter(year==2022),
+                          family="binomial")
+mod_fruiting_poll_23<-glmmTMB(fruiting~poll_type+(1|plot),
+                          data_transplants%>%filter(year==2023),
+                          family="binomial")
+summary(mod_fruiting_poll_22)
+summary(mod_fruiting_poll_23)
+nobs(mod_fruiting_poll_22)
+nobs(mod_fruiting_poll_23)
+```
+
+No effect of pollination type, so we do not include it in further models.
+
+```{r}
+mod_fruiting_22<-glmmTMB(fruiting~temp+temp_diff+I(temp_diff^2)+ 
+                           (1|plot),data_transplants%>%filter(year==2022),
+                         family="binomial")
+mod_fruiting_23<-glmmTMB(fruiting~temp+temp_diff+I(temp_diff^2)+ 
+                           (1|plot),data_transplants%>%filter(year==2023),
+                         family="binomial")
+summary(mod_fruiting_22)
+summary(mod_fruiting_23)
+```
+
+## Predictions
+
+```{r}
+ggplot()+
+  geom_point(data=data_transplants,aes(x=temp,y=fruiting,color=year))+
+  geom_ribbon(data=ggpredict(mod_fruiting_22,terms=c("temp[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#F8766D",alpha=0.2)+
+  geom_line(data=ggpredict(mod_fruiting_22,terms=c("temp[all]")),
+            aes(x=x,y=predicted),color="#F8766D",size=1)+
+  geom_ribbon(data=ggpredict(mod_fruiting_23,terms=c("temp[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#00BFC4",alpha=0.2)+
+  geom_line(data=ggpredict(mod_fruiting_23,terms=c("temp[all]")),
+            aes(x=x,y=predicted),color="#00BFC4",size=1,linetype="dashed")+
+  my_theme_legend()+xlab("Temperature at planting site (ºC)")+
+  ylab("Probability of fruting")
+ggplot()+
+  geom_point(data=data_transplants,aes(x=temp_diff,y=fruiting,color=year))+
+  geom_ribbon(data=ggpredict(mod_fruiting_22,terms=c("temp_diff[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#F8766D",alpha=0.2)+
+  geom_line(data=ggpredict(mod_fruiting_22,terms=c("temp_diff[all]")),
+            aes(x=x,y=predicted),color="#F8766D",size=1)+
+  geom_ribbon(data=ggpredict(mod_fruiting_23,terms=c("temp_diff[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#00BFC4",alpha=0.2)+
+  geom_line(data=ggpredict(mod_fruiting_23,terms=c("temp_diff[all]")),
+            aes(x=x,y=predicted),color="#00BFC4",size=1,linetype="dashed")+
+  my_theme_legend()+xlab("Temperature difference (ºC)")+
+  ylab("Probability of fruting")
+```
+
+## Diagnostics
+
+```{r}
+plot(simulateResiduals(mod_fruiting_22))
+plot(simulateResiduals(mod_fruiting_23))
+```
+
+# Number of fruits
+
+Models for number of fruits in those that flowered (flowering=1).
+
+Does pollination type have an effect on number of flowers?
+
+```{r}
+mod_nfr_poll_22<-glmmTMB(n_tot_fr~poll_type+(1|plot),
+                          data_transplants%>%filter(year==2022&flowering==1),
+                          family="nbinom2") # nbinom2 lower AIC than poisson
+mod_nfr_poll_23<-glmmTMB(n_tot_fr~poll_type+(1|plot),
+                          data_transplants%>%filter(year==2023&flowering==1),
+                          family="nbinom2") # nbinom2 lower AIC than poisson
+summary(mod_nfl_poll_22)
+summary(mod_nfl_poll_23)
+nobs(mod_nfl_poll_22)
+nobs(mod_nfl_poll_23)
+```
+
+Significant effect of poll_type in both years --> include in further models (so far as fixed).
+
+```{r}
+mod_nfr_22_pollf<-glmmTMB(n_tot_fr~temp+temp_diff+I(temp_diff^2)+
+                            poll_type+(1|plot),
+                          data_transplants%>%filter(year==2022&flowering==1),
+                          family="nbinom2")
+mod_nfr_23_pollf<-glmmTMB(n_tot_fr~temp+temp_diff+I(temp_diff^2)+ 
+                            poll_type+(1|plot),
+                          data_transplants%>%filter(year==2023&flowering==1),
+                          family="nbinom2")
+summary(mod_nfr_22_pollf)
+summary(mod_nfr_23_pollf)
+``` 
+
+### Predictions
+
+```{r}
+ggplot()+
+  #geom_point(data=data_transplants,aes(x=temp,y=n_tot_fr,color=year))+
+  geom_ribbon(data=ggpredict(mod_nfr_22_pollf,terms=c("temp[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#F8766D",alpha=0.2)+
+  geom_line(data=ggpredict(mod_nfr_22_pollf,terms=c("temp[all]")),
+            aes(x=x,y=predicted),color="#F8766D",size=1)+
+  geom_ribbon(data=ggpredict(mod_nfr_23_pollf,terms=c("temp[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#00BFC4",alpha=0.2)+
+  geom_line(data=ggpredict(mod_nfr_23_pollf,terms=c("temp[all]")),
+            aes(x=x,y=predicted),color="#00BFC4",size=1,linetype="dashed")+
+  my_theme_legend()+xlab("Temperature at planting site (ºC)")+
+  ylab("Total number of fruits")
+ggplot()+
+  #geom_point(data=data_transplants,aes(x=temp_diff,y=n_tot_fr,color=year))+
+  geom_ribbon(data=ggpredict(mod_nfr_22_pollf,terms=c("temp_diff[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#F8766D",alpha=0.2)+
+  geom_line(data=ggpredict(mod_nfr_22_pollf,terms=c("temp_diff[all]")),
+            aes(x=x,y=predicted),color="#F8766D",size=1)+
+  geom_ribbon(data=ggpredict(mod_nfr_23_pollf,terms=c("temp_diff[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#00BFC4",alpha=0.2)+
+  geom_line(data=ggpredict(mod_nfr_23_pollf,terms=c("temp_diff[all]")),
+            aes(x=x,y=predicted),color="#00BFC4",size=1)+
+  my_theme_legend()+xlab("Temperature difference (ºC)")+
+  ylab("Total number of fruits")
+grid.arrange(
+  ggplot()+
+#    geom_jitter(data=data_transplants%>%filter(year==2022),
+#                aes(x=poll_type,y=n_tot_fr),width=0.05,alpha=0.1)+
+    geom_point(data=ggpredict(mod_nfr_22_pollf,terms=c("poll_type[all]")),
+               aes(x=x,y=predicted),size=3)+
+    geom_errorbar(data=ggpredict(mod_nfr_22_pollf,terms=c("poll_type[all]")),
+                  aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+                  width=0.1)+
+    my_theme()+xlab("Pollination type")+ylab("Total number of fruits")+
+    ggtitle("2022"),
+  ggplot()+
+#    geom_jitter(data=data_transplants%>%filter(year==2023),
+#                aes(x=poll_type,y=n_tot_fr),width=0.05,alpha=0.1)+
+    geom_point(data=ggpredict(mod_nfr_23_pollf,terms=c("poll_type")),
+               aes(x=x,y=predicted),size=3)+
+    geom_errorbar(data=ggpredict(mod_nfr_23_pollf,terms=c("poll_type")),
+                  aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+                  width=0.1)+
+    my_theme()+xlab("Pollination type")+ylab("Total number of fruits")+
+    ggtitle("2023"),
+ncol=2)
+```
+
+### Diagnostics
+
+```{r}
+plot(simulateResiduals(mod_nfr_22_pollf))
+testDispersion(simulateResiduals(mod_nfr_22_pollf),alternative="greater")
+plot(simulateResiduals(mod_nfr_23_pollf))
+testDispersion(simulateResiduals(mod_nfr_23_pollf),alternative="greater")
+```
+
+# TRY: Probability of fruiting + n fruits (ZI models)
+
+# Fruit set
+
+```{r}
+data_transplants<-data_transplants%>%
+  mutate(fr_set=ifelse(fruiting==0,NA,n_tot_fr/tot_fl_bodies_corr))
+hist(data_transplants$fr_set)
+range(data_transplants$fr_set,na.rm=T)
+```
+
+Does pollination type have an effect on fruit set?
+
+```{r}
+mod_frset_poll_22<-glmmTMB(fr_set~poll_type+(1|plot),
+                          data_transplants%>%filter(year==2022&flowering==1),
+                          weights=tot_fl_bodies_corr,family="binomial")
+mod_frset_poll_23<-glmmTMB(fr_set~poll_type+(1|plot),
+                          data_transplants%>%filter(year==2023&flowering==1),
+                          weights=tot_fl_bodies_corr,family="binomial")
+summary(mod_frset_poll_22)
+summary(mod_frset_poll_23)
+nobs(mod_frset_poll_22)
+nobs(mod_frset_poll_23)
+```
+
+Significant effect of poll_type in 2022 --> include in further models (so far as fixed).
+
+```{r}
+mod_frset_22_pollf<-glmmTMB(fr_set~temp+temp_diff+I(temp_diff^2)+ 
+                              poll_type+(1|plot),
+                            data_transplants%>%filter(year==2022&flowering==1),
+                            weights=tot_fl_bodies_corr,family="binomial")
+mod_frset_23<-glmmTMB(fr_set~temp+temp_diff+I(temp_diff^2)+ 
+                        (1|plot),
+                      data_transplants%>%filter(year==2023&flowering==1),
+                      weights=tot_fl_bodies_corr,family="binomial")
+summary(mod_frset_22_pollf)
+summary(mod_frset_23)
+```
+
+
+#### Predictions
+
+```{r}
+ggplot()+
+  geom_point(data=data_transplants,aes(x=temp,y=fr_set,color=year))+
+  geom_ribbon(data=ggpredict(mod_frset_22_pollf,terms=c("temp[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#F8766D",alpha=0.2)+
+  geom_line(data=ggpredict(mod_frset_22_pollf,terms=c("temp[all]")),
+            aes(x=x,y=predicted),color="#F8766D",size=1)+
+  geom_ribbon(data=ggpredict(mod_frset_23,terms=c("temp[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#00BFC4",alpha=0.2)+
+  geom_line(data=ggpredict(mod_frset_23,terms=c("temp[all]")),
+            aes(x=x,y=predicted),color="#00BFC4",size=1)+
+  my_theme_legend()+xlab("Temperature at planting site (ºC)")+
+  ylab("Fruit set")
+ggplot()+
+  geom_point(data=data_transplants,aes(x=temp_diff,y=fr_set,color=year))+
+  geom_ribbon(data=ggpredict(mod_frset_22_pollf,terms=c("temp_diff[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#F8766D",alpha=0.2)+
+  geom_line(data=ggpredict(mod_frset_22_pollf,terms=c("temp_diff[all]")),
+            aes(x=x,y=predicted),color="#F8766D",size=1)+
+  geom_ribbon(data=ggpredict(mod_frset_23,terms=c("temp_diff[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#00BFC4",alpha=0.2)+
+  geom_line(data=ggpredict(mod_frset_23,terms=c("temp_diff[all]")),
+            aes(x=x,y=predicted),color="#00BFC4",size=1)+
+  my_theme_legend()+xlab("Temperature difference (ºC)")+
+  ylab("Fruit set")
+ggplot()+
+  #geom_jitter(data=data_transplants%>%filter(year==2022),
+  #            aes(x=poll_type,y=fr_set),width=0.05,alpha=0.1)+ 
+  geom_point(data=ggpredict(mod_frset_22_pollf,terms=c("poll_type[all]")),
+             aes(x=x,y=predicted),size=3)+
+  geom_errorbar(data=ggpredict(mod_frset_22_pollf,terms=c("poll_type[all]")),
+                aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),width=0.1)+
+  my_theme()+xlab("Pollination type")+ylab("Fruit set")+ggtitle("2022")
+```
+
+#### Diagnostics
+
+```{r}
+plot(simulateResiduals(mod_frset_22_pollf))
+plot(simulateResiduals(mod_frset_23))
+```
+
+# Number of seeds
+
+Including only plants that produced fruits.
+
+```{r}
+hist((data_transplants%>%filter(fruiting==1))$n_tot_seed)
+```
+
+Does pollination type have an effect on number of seeds?
+
+```{r}
+mod_nseed_poll_22<-glmmTMB(n_tot_seed~poll_type+(1|plot),
+                          data_transplants%>%filter(year==2022&fruiting==1),
+                          family="nbinom2") # nbinom2 lower AIC than poisson
+mod_nseed_poll_23<-glmmTMB(n_tot_seed~poll_type+(1|plot),
+                          data_transplants%>%filter(year==2023&fruiting==1),
+                          family="nbinom2") # nbinom2 lower AIC than poisson
+summary(mod_nseed_poll_22)
+summary(mod_nseed_poll_23)
+nobs(mod_nseed_poll_22)
+nobs(mod_nseed_poll_23)
+```
+
+Yes! Self-pollinated have a higher number of seeds than cross-pollinated (WHY??).
+
+Significant effect of poll_type in both years --> include in further models (so far as fixed).
+
+```{r}
+mod_nseed_22_pollf<-glmmTMB(n_tot_seed~temp+temp_diff+I(temp_diff^2)+ 
+                            poll_type+(1|plot),
+                          data_transplants%>%filter(year==2022&fruiting==1),
+                          family="nbinom2")
+mod_nseed_23_pollf<-glmmTMB(n_tot_seed~temp+temp_diff+I(temp_diff^2)+ 
+                            poll_type+(1|plot),
+                          data_transplants%>%filter(year==2023&fruiting==1),
+                          family="nbinom2")
+summary(mod_nseed_22_pollf)
+summary(mod_nseed_23_pollf)
+``` 
+
+### Predictions
+
+```{r}
+ggplot()+
+  geom_point(data=data_transplants,aes(x=temp,y=n_tot_seed,color=year))+
+  geom_ribbon(data=ggpredict(mod_nseed_22_pollf,terms=c("temp[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#F8766D",alpha=0.2)+
+  geom_line(data=ggpredict(mod_nseed_22_pollf,terms=c("temp[all]")),
+            aes(x=x,y=predicted),color="#F8766D",size=1)+
+  geom_ribbon(data=ggpredict(mod_nseed_23_pollf,terms=c("temp[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#00BFC4",alpha=0.2)+
+  geom_line(data=ggpredict(mod_nseed_23_pollf,terms=c("temp[all]")),
+            aes(x=x,y=predicted),color="#00BFC4",size=1,linetype="dashed")+
+  my_theme_legend()+xlab("Temperature at planting site (ºC)")+
+  ylab("Total number of seeds")
+ggplot()+
+  geom_point(data=data_transplants,aes(x=temp_diff,y=n_tot_seed,color=year))+
+  geom_ribbon(data=ggpredict(mod_nseed_22_pollf,terms=c("temp_diff[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#F8766D",alpha=0.2)+
+  geom_line(data=ggpredict(mod_nseed_22_pollf,terms=c("temp_diff[all]")),
+            aes(x=x,y=predicted),color="#F8766D",size=1)+
+  geom_ribbon(data=ggpredict(mod_nseed_23_pollf,terms=c("temp_diff[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#00BFC4",alpha=0.2)+
+  geom_line(data=ggpredict(mod_nseed_23_pollf,terms=c("temp_diff[all]")),
+            aes(x=x,y=predicted),color="#00BFC4",size=1,linetype="dashed")+
+  my_theme_legend()+xlab("Temperature difference (ºC)")+
+  ylab("Total number of seeds")
+ggplot()+
+  geom_point(data=ggpredict(mod_nseed_22_pollf,terms=c("poll_type[all]")),
+             aes(x=x,y=predicted),size=3)+
+  geom_errorbar(data=ggpredict(mod_nseed_22_pollf,terms=c("poll_type[all]")),
+                aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),width=0.1)+ 
+  my_theme()+xlab("Pollination type")+ylab("Total number of seeds")+
+  ggtitle("2022")
+```
+
+### Diagnostics
+
+```{r}
+plot(simulateResiduals(mod_nseed_22_pollf))
+plot(simulateResiduals(mod_nseed_23_pollf))
+testDispersion(simulateResiduals(mod_nseed_22_pollf),alternative="greater")
+testDispersion(simulateResiduals(mod_nseed_23_pollf),alternative="greater")
+```
+
+# Seeds per flower
+
+```{r}
+data_transplants<-data_transplants%>%
+  mutate(n_seeds_per_fl=ifelse(fruiting==0,NA,
+                                  n_tot_seed/tot_fl_bodies_corr))
+hist(data_transplants$n_seeds_per_fl)
+```
+
+Does pollination type have an effect on number of seeds per flower?
+
+```{r}
+mod_seedsperfl_poll_22<-glmmTMB(n_seeds_per_fl~poll_type+(1|plot),
+                          data_transplants%>%filter(year==2022&flowering==1),
+                          family="nbinom2") # nbinom2 lower AIC than poisson
+mod_seedsperfl_poll_23<-glmmTMB(n_seeds_per_fl~poll_type+(1|plot),
+                          data_transplants%>%filter(year==2023&flowering==1),
+                          family="nbinom2") # nbinom2 lower AIC than poisson
+summary(mod_seedsperfl_poll_22)
+summary(mod_seedsperfl_poll_23)
+nobs(mod_seedsperfl_poll_22)
+nobs(mod_seedsperfl_poll_23)
+```
+
+Yes! Self-pollinated have a higher number of seeds per flower than cross-pollinated (WHY??).
+
+Significant effect of poll_type in both years --> include in further models (so far as fixed).
+
+```{r}
+mod_seedsperfl_22_pollf<-glmmTMB(n_seeds_per_fl~temp+temp_diff+I(temp_diff^2)+ 
+                                   poll_type+(1|plot),
+                          data_transplants%>%
+                            filter(year==2022&flowering==1&tot_fl_bodies>0),
+                          family="nbinom2")
+mod_seedsperfl_23_pollf<-glmmTMB(n_seeds_per_fl~temp+temp_diff+I(temp_diff^2)+ 
+                                   poll_type+(1|plot),
+                          data_transplants%>%
+                            filter(year==2023&flowering==1&tot_fl_bodies>0),
+                          family="nbinom2")
+summary(mod_seedsperfl_22_pollf)
+summary(mod_seedsperfl_23_pollf)
+``` 
+
+### Predictions
+
+```{r}
+ggplot()+
+  geom_point(data=data_transplants,aes(x=temp,y=n_seeds_per_fl,color=year))+
+  geom_ribbon(data=ggpredict(mod_seedsperfl_22_pollf,terms=c("temp[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#F8766D",alpha=0.2)+
+  geom_line(data=ggpredict(mod_seedsperfl_22_pollf,terms=c("temp[all]")),
+            aes(x=x,y=predicted),color="#F8766D",size=1)+
+  geom_ribbon(data=ggpredict(mod_seedsperfl_23_pollf,terms=c("temp[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#00BFC4",alpha=0.2)+
+  geom_line(data=ggpredict(mod_seedsperfl_23_pollf,terms=c("temp[all]")),
+            aes(x=x,y=predicted),color="#00BFC4",size=1,linetype="dashed")+
+  my_theme_legend()+xlab("Temperature at planting site (ºC)")+
+  ylab("Number of seeds per flower")
+ggplot()+
+  geom_point(data=data_transplants,aes(x=temp_diff,y=n_seeds_per_fl,color=year))+
+  geom_ribbon(data=ggpredict(mod_seedsperfl_22_pollf,terms=c("temp_diff[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#F8766D",alpha=0.2)+
+  geom_line(data=ggpredict(mod_seedsperfl_22_pollf,terms=c("temp_diff[all]")),
+            aes(x=x,y=predicted),color="#F8766D",size=1)+
+  geom_ribbon(data=ggpredict(mod_seedsperfl_23_pollf,terms=c("temp_diff[all]")),
+              aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+              fill="#00BFC4",alpha=0.2)+
+  geom_line(data=ggpredict(mod_seedsperfl_23_pollf,terms=c("temp_diff[all]")),
+            aes(x=x,y=predicted),color="#00BFC4",size=1,linetype="dashed")+
+  my_theme_legend()+xlab("Temperature difference (ºC)")+
+  ylab("Number of seeds per flower")
+grid.arrange(
+  ggplot()+
+    geom_point(data=ggpredict(mod_seedsperfl_22_pollf,terms=c("poll_type[all]")),
+               aes(x=x,y=predicted),size=3)+
+    geom_errorbar(data=ggpredict(mod_seedsperfl_22_pollf,terms=c("poll_type[all]")),
+                  aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+                  width=0.1)+
+    my_theme()+xlab("Pollination type")+ylab("Number of seeds per flower")+
+    ggtitle("2022"),
+  ggplot()+
+    geom_point(data=ggpredict(mod_seedsperfl_23_pollf,terms=c("poll_type")),
+               aes(x=x,y=predicted),size=3)+
+    geom_errorbar(data=ggpredict(mod_seedsperfl_23_pollf,terms=c("poll_type")),
+                  aes(x=x,y=predicted,ymin=conf.low,ymax=conf.high),
+                  width=0.1)+
+    my_theme()+xlab("Pollination type")+ylab("Number of seeds per flower")+
+    ggtitle("2023"),
+ncol=2)
+```
+
+### Diagnostics
+
+```{r}
+plot(simulateResiduals(mod_seedsperfl_22_pollf))
+plot(simulateResiduals(mod_seedsperfl_23_pollf))
+testDispersion(simulateResiduals(mod_seedsperfl_22_pollf),alternative="greater")
+testDispersion(simulateResiduals(mod_seedsperfl_23_pollf),alternative="greater")
+```
+
+# Summary
+
+```{r}
+tab_model(mod_surv_22,mod_median_h_22,mod_flowering_22_pollf,mod_nfl_22_pollf,
+          mod_nfl_22_mh_pollf,mod_fruiting_22,mod_nfr_22_pollf,
+          mod_frset_22_pollf,mod_nseed_22_pollf,mod_seedsperfl_22_pollf,
+          transform=NULL,show.intercept=F,show.ci=F,show.se=F,show.stat=F,
+          p.style="stars",
+          show.r2=T,show.icc=F,show.re.var=F,show.ngroups=F,digits=3,
+          dv.labels=c("Survival","Median h","Prob. of flowering",
+                      "N flowers (1)","N flowers (2)","Prob. of fruiting",
+                      "N fruits","Fruit set","N seeds","N seeds per flower"),
+          file="output/tables/summary_2022.doc")
+tab_model(mod_surv_23,mod_median_h_23_pollf,mod_flowering_23_pollf,
+          mod_nfl_23_pollf,mod_nfl_23_mh_pollf,mod_fruiting_23,mod_nfr_23_pollf,
+          mod_frset_23,mod_nseed_23_pollf,mod_seedsperfl_23_pollf,
+          transform=NULL,show.intercept=F,show.ci=F,show.se=F,show.stat=F,
+          p.style="stars",
+          show.r2=T,show.icc=F,show.re.var=F,show.ngroups=F,digits=3,
+          dv.labels=c("Survival","Median h","Prob. of flowering",
+                      "N flowers (1)","N flowers (2)","Prob. of fruiting",
+                      "N fruits","Fruit set","N seeds","N seeds per flower"),
+          file="output/tables/summary_2023.doc")
+```
+
+# Aster model
+
+# HERE: check survival 22-23
+
+Survival --> Any flowers --> Flowers --> Any Fruits --> Fruits --> Seeds
+
+Survival (did the plant survive?) is Bernouilli.
+
+Any flowers (did the plant produce flowers?) is Bernouilli.
+
+Number of Flowers is zero-truncated negative binomial, because flower number cannot be zero if fruit production = 1.
+
+Any fruits (did the plant produce fruits?) is Bernoulli.
+
+Number of Fruits is zero-truncated negative binomial, because fruit number cannot be zero if fruit production = 1.
+
+Number of seeds is negative binomial (?).
+
+Remove 5 plants that were grazed before they peaked in 2022, 1 plant that was aborted, 3 plants where there is no info about number of seeds, and some plants where temp or temp_diff (or both) were NA:
+
+```{r}
+data_transplants_aster<-data_transplants%>%
+  filter(comments_peak!="Grazed before it peaked"|is.na(comments_peak))%>%
+  filter(F_NF_A!="A"|is.na(F_NF_A))%>%
+  filter(!is.na(n_tot_seed))%>%
+  filter(!is.na(temp_diff)&!is.na(temp))
+```
+
+```{r}
+# Something weird with surival, check later!
+data_transplants_aster$nfl<-with(data_transplants_aster,
+                           ifelse(is.na(surv),NA,
+                                  ifelse(surv==0,0,
+                                         ifelse(flowering==0,0,
+                                                as.integer(data_transplants_aster$
+                                                             tot_fl_bodies_corr)))))
+data_transplants_aster$nfr<-with(data_transplants_aster,
+                           ifelse(surv==0,0,
+                                  ifelse(flowering==0,0,
+                                         ifelse(fruiting==0,0,
+                                                as.integer(data_transplants_aster$
+                                                             n_tot_fr)))))
+data_transplants_aster$nseed<-with(data_transplants_aster,
+                           ifelse(surv==0,0,
+                                  ifelse(flowering==0,0,
+                                         ifelse(fruiting==0,0,
+                                                as.integer(data_transplants_aster$
+                                                             n_tot_seed)))))
+data_transplants_aster$fl_01<-with(data_transplants_aster,ifelse(nfl>0,1,0))
+data_transplants_aster$fr_01<-with(data_transplants_aster,ifelse(nfr>0,1,0))
+
+vars <- c("surv", "fl_01", "nfl", "fr_01", "nfr","nseed") # Our fitness variables
+```
+
+Show the graphical model:
+
+```{r}
+pred <- c(0,1,2,3,4,5) # specifies the predecessor structure of the graph
+
+foo <- c("root", vars)
+pvars <- foo[pred + 1]
+bar <- cbind(pvars, vars)
+colnames(bar) <- c("pred", "succ")
+bar
+```
+
+## 2022
+
+Reshape data:
+
+```{r}
+redata22 <- reshape(data.frame(data_transplants_aster%>%filter(year==2022)%>%
+                      dplyr::select(plot,poll_type,temp,temp_diff,
+                                    surv,fl_01,nfl,fr_01,nfr,nseed)), 
+                  varying = list(vars),
+                  direction = "long", 
+                  timevar = "varb", # reshape to long format
+                  times = as.factor(vars), v.names = "resp")
+redata22 <- data.frame(redata22, root = 1) # This adds a variable root to the df
+# and makes all its values one (including for non-root nodes, but those values
+# are ignored by all aster package functions).
+
+# resp contains all of the data in the variables indicated by the string
+# vars packed into a single vector
+# varb indicates which original variable the corresponding element of
+# resp came from
+```
+
+```{r}
+names(data.frame(data_transplants_aster%>%filter(year==2022)%>%
+                      dplyr::select(plot,poll_type,temp,temp_diff,
+                                    surv,flowering,nfl,fruiting,nfr,nseed)))
+names(redata22)
+nrow(data.frame(data_transplants_aster%>%filter(year==2022)%>%
+                      dplyr::select(plot,poll_type,temp,temp_diff,
+                                    surv,flowering,nfl,fruiting,nfr,nseed)))
+nrow(redata22)
+nrow(data.frame(data_transplants_aster%>%filter(year==2022)%>%
+                      dplyr::select(plot,poll_type,temp,temp_diff,
+                                    surv,flowering,nfl,fruiting,nfr,nseed)))*
+  length(vars)
+sapply(redata22, class)
+levels(redata22$varb)
+length(unique(redata22$id))
+```
+
+Look at Poisson distributions for flowers, fruits and seeds:
+
+```{r}
+# For flowers
+nfl.dist_22 <- (data_transplants_aster%>%
+  filter(year==2022))$nfl[(data_transplants_aster%>%
+                             filter(year==2022))$fl_01 == 1]
+length(nfl.dist_22) # 597
+sum(nfl.dist_22 == 0) # 0
+nfl.parms_22 <- fitdistr(nfl.dist_22, "poisson")
+nfl.parms_22 # lambda = 19.142379 
+
+# For fruits
+nfr.dist_22 <- (data_transplants_aster%>%
+  filter(year==2022))$nfr[(data_transplants_aster%>%
+                             filter(year==2022))$fr_01 == 1]
+length(nfr.dist_22) # 581
+sum(nfr.dist_22 == 0) # 0
+nfr.parms_22 <- fitdistr(nfr.dist_22, "poisson")
+nfr.parms_22 # lambda = 16.8433735
+
+# For seeds
+nseed.dist_22 <- (data_transplants_aster%>%
+  filter(year==2022))$nseed[(data_transplants_aster%>%
+                             filter(year==2022))$nfr > 0]
+length(nseed.dist_22) # 581
+sum(nseed.dist_22 == 0) # 3 with nfr>0 and nseed=0 - OK?
+nseed.parms_22 <- fitdistr(nseed.dist_22, "poisson")
+nseed.parms_22 # lambda = 85.342513
+
+# Compare
+hist(nfl.dist_22,col = rgb(1, 0, 0, 0.5),breaks=10)
+hist(rpois(597, lambda = 19.142379),col = rgb(0, 0, 1, 0.5),
+     add=T,breaks=10)
+hist(nfr.dist_22,col = rgb(1, 0, 0, 0.5),breaks=10)
+hist(rpois(581, lambda = 16.8433735),col = rgb(0, 0, 1, 0.5),
+     add=T,breaks=10)
+hist(nseed.dist_22,col = rgb(1, 0, 0, 0.5),breaks=10)
+hist(rpois(581, lambda = 85.342513),col = rgb(0, 0, 1, 0.5),
+     add=T,breaks=10)
+```
+
+Look at negative binomial distributions for flowers, fruits and seeds:
+
+```{r}
+# For flowers
+nfl.parms2_22 <- fitdistr(nfl.dist_22, "negative binomial")
+nfl.parms2_22 # size = 1.17467887
+
+# For fruits
+nfr.parms2_22 <- fitdistr(nfr.dist_22, "negative binomial")
+nfr.parms2_22 # size = 1.21845714
+
+# For seeds
+nseed.parms2_22 <- fitdistr(nseed.dist_22, "negative binomial")
+# Warning message: In densfun(x, parm[1], parm[2], ...) : NaNs produced - OK?
+nseed.parms2_22 # size = 3.555838
+
+# Compare
+hist(nfl.dist_22,col = rgb(1, 0, 0, 0.5),breaks=10)
+hist(rnbinom(597, size = 1.17467887, mu = 19.14237854),col = rgb(0, 0, 1, 0.5),
+     add=T,breaks=10)
+hist(nfr.dist_22,col = rgb(1, 0, 0, 0.5),breaks=10)
+hist(rnbinom(581, size = 1.21845714, mu = 16.84337315),col = rgb(0, 0, 1, 0.5),
+     add=T,breaks=10)
+hist(nseed.dist_22,col = rgb(1, 0, 0, 0.5),breaks=10)
+hist(rnbinom(581, size = 3.555838, mu = 85.342513),col = rgb(0, 0, 1, 0.5),
+     add=T,breaks=10)
+```
+
+Specifying families:
+
+```{r}
+fam <- c(1,2,3,4,5,6) # specifies the one-parameter exponential families for the nodes
+famlist <- list(fam.bernoulli(), # surv
+                fam.bernoulli(), # fl_01
+                fam.truncated.negative.binomial(size=1.17467887,
+                                                truncation = 0), # nfl
+                fam.bernoulli(),# fr_01
+                fam.truncated.negative.binomial(size=1.21845714,
+                                                truncation = 0),# nfr
+                fam.negative.binomial(size=3.555838)# nseed
+                )
+vars[fam == 1]
+vars[fam == 2]
+vars[fam == 3]
+vars[fam == 4]
+vars[fam == 5]
+vars[fam == 6]
+```
+
+Specifying families (alternative, in case negative binomial really cannot be used with reaster):
+
+```{r}
+famlist1 <- list(fam.bernoulli(), # surv
+                fam.bernoulli(), # fl_01
+                fam.truncated.poisson(truncation = 0), # nfl
+                fam.bernoulli(),# fr_01
+                fam.truncated.poisson(truncation = 0),# nfr
+                fam.poisson()# nseed
+                )
+vars[fam == 1]
+vars[fam == 2]
+vars[fam == 3]
+vars[fam == 4]
+vars[fam == 5]
+vars[fam == 6]
+```
+
+Creating the fitness variable of interest (and others):
+
+```{r}
+surv01 <- grep("surv", as.character(redata22$varb))
+surv01 <- is.element(seq(along = redata22$varb), surv01)
+redata22 <- data.frame(redata22, surv01 = as.integer(surv01))
+
+fl01 <- grep("fl_01", as.character(redata22$varb))
+fl01 <- is.element(seq(along = redata22$varb), fl01)
+redata22 <- data.frame(redata22, fl01 = as.integer(fl01))
+
+fls <- grep("nfl", as.character(redata22$varb))
+fls <- is.element(seq(along = redata22$varb), fls)
+redata22 <- data.frame(redata22, fls = as.integer(fls))
+
+fr01 <- grep("fr_01", as.character(redata22$varb))
+fr01 <- is.element(seq(along = redata22$varb), fr01)
+redata22 <- data.frame(redata22, fr01 = as.integer(fr01))
+
+frs <- grep("nfr", as.character(redata22$varb))
+frs <- is.element(seq(along = redata22$varb), frs)
+redata22 <- data.frame(redata22, frs = as.integer(frs))
+
+seeds <- grep("nseed", as.character(redata22$varb))
+seeds <- is.element(seq(along = redata22$varb), seeds)
+redata22 <- data.frame(redata22, seeds = as.integer(seeds))
+
+names(redata22)
+```
+
+Center the predictors (I think we do not need to use standardized predictors in Aster models, but centering the predictors helps the model to converge):
+
+```{r}
+redata22$temp_c<-redata22$temp-mean(redata22$temp)
+redata22$temp_diff_c<-redata22$temp_diff-mean(redata22$temp_diff)
+```
+
+Scaled predictors (in case we need to use them):
+
+```{r}
+redata22$temp_s<-scale(redata22$temp)
+redata22$temp_diff_s<-scale(redata22$temp_diff)
+```
+
+### Fit model
+
+#### Check effect of pollination
+
+```{r}
+# aster22_poll_nb <- reaster(fixed=resp ~ varb+seeds:(poll_type),
+#                  random=list(plot= ~0 + surv01:plot + fl01:plot + fls:plot + 
+#                                fr01:plot + frs:plot + seeds:plot),  # OK for random effect?
+#                              pred, fam, famlist=famlist, varb, id, root, 
+#                              data = redata22)
+```
+
+```{r}
+#summary(aster22_poll_nb) Gives error
+```
+
+```{r}
+aster22_poll_pois <- reaster(fixed=resp ~ varb+seeds:(poll_type),
+                 random=list(plot= ~0 + surv01:plot + fl01:plot + fls:plot + 
+                               fr01:plot + frs:plot + seeds:plot),  # OK for random effect?
+                             pred, fam, famlist=famlist1, varb, id, root, 
+                             data = redata22)
+```
+
+```{r}
+summary(aster22_poll_pois)
+```
+
+There seems to be no effect - suggest removing from further models. But we could also include it, given the results of previous models for fitness components.
+
+#### Negative binomial for counts
+
+Fitting the full Aster model (with plot as random):
+
+```{r}
+# Full Aster model with seeds as the interaction for all fixed variables
+aster22 <- reaster(fixed=resp ~ varb+seeds:(temp_s+temp_diff_s+I(temp_diff_s^2)), 
+                 random=list(plot= ~0 + 
+                               #surv01:plot + fl01:plot + fls:plot + 
+                               #fr01:plot + frs:plot + Including these gives error
+                               seeds:plot), # OK for random effect?
+                             pred, fam, famlist=famlist, varb, id, root, 
+                             data = redata22)
+# Include varb in the formula to get a different “intercept” 
+# for each node in the graph (i.e. one for fitness_01 and one for n_seeds)
+# The categorical variable varb gets turned into as many dummy
+# variables as there are nodes in the graph, one is dropped, and the
+# “intercept” dummy variable (all components = 1) is added; the
+# effect is to provide a different intercept for each node.
+# Include interaction seeds: with all other variables
+# Seehttps://groups.google.com/g/aster-analysis-user-group/c/xwanCX8VOWQ/m/AcTnF3E3BAAJ 
+# and code there.
+# According to https://www.stat.umn.edu/geyer/8931aster/slides/s1.pdf#page=55 
+# (slides 55-71), we do this to have separate coefficients for the “layer” 
+# of the graph consisting of terminal nodes (as in aster models, regression
+# coefficients “for” a node of the graph also influence all “earlier” nodes
+# To estimate the effects of each predictor on lifetime fitness, each predictor
+# was fit at the level of total seed set in the model (Shaw et al. 2008)
+```
+
+```{r}
+summary(aster22, 
+        show.graph = TRUE # Table about the graph structure in the printout
+        ) # We can use info.tol = 1e-11 To help the model to converge
+# (see https://groups.google.com/g/aster-analysis-user-group/c/xXXROez8aAA/m/BrNE6whiIEQJ)
+```
+
+Fitting the full Aster model (without plot as random):
+
+```{r}
+aster22_noplot <- aster(resp ~ varb+seeds:(temp_s+temp_diff_s+I(temp_diff_s^2)), 
+                             pred, fam, famlist=famlist, varb, id, root, 
+                             data = redata22)
+```
+
+Compare:
+
+```{r}
+anova(aster22_noplot,aster22)
+```
+
+LRT not significant, does this mean that we can discard plot as random effect and use aster instead of reaster?
+
+#### (USE) Poisson for counts
+
+Fitting the full Aster model (with plot as random):
+
+```{r}
+aster22_pois <- reaster(fixed=resp ~ varb+seeds:(temp_s+temp_diff_s+
+                                                   I(temp_diff_s^2)), 
+                 random=list(plot= ~0 + surv01:plot + fl01:plot + fls:plot + 
+                               fr01:plot + frs:plot + seeds:plot), 
+                 pred, fam, famlist=famlist1, varb, id, root, 
+                 data = redata22)
+```
+
+```{r}
+summary(aster22_pois)
+```
+
+Fitting the full Aster model (without plot as random):
+
+```{r}
+aster22_noplot_pois <- aster(resp ~ varb+seeds:(temp_s+temp_diff_s+
+                                                  I(temp_diff_s^2)),
+                             pred, fam, famlist=famlist1, varb, id, root, 
+                             data = redata22)
+```
+
+```{r}
+summary(aster22_noplot_pois)
+```
+
+Compare:
+
+```{r}
+anova(aster22_noplot_pois,aster22_pois)
+```
+
+LRT significant, I guess this means that we cannot discard plot as random effect and need to use reaster?
+
+### LRTs
+
+The Aster manual advises to not look at significances in the summary, but instead compare models with a likelihood ratio test to evaluate significance of each term. The comparison between two or more models . . . will only be valid if they are (1) fitted to the same dataset, (2) models are nested, (3) models are of the same type (all conditional or all unconditional), (4) have the same dependence graph and exponential families. None of this is currently checked.
+
+Determine the significance of fixed effects by comparing submodels without the term of interest to the full model using LRTs.
+
+Use LRTs comparing submodels to fuller models to test each predictor of interest.
+
+Submodels:
+
+Testing the significance of seeds:temp_s
+
+```{r}
+aster22_pois_1 <- reaster(fixed=resp ~ varb+seeds:(temp_diff_s+I(temp_diff_s^2)), 
+                          random=list(plot= ~0 + surv01:plot + fl01:plot + 
+                                        fls:plot + fr01:plot + frs:plot + 
+                                        seeds:plot), 
+                          pred, fam, famlist=famlist1, varb, id, root, 
+                          data = redata22)
+```
+
+```{r}
+anova(aster22_pois_1,aster22_pois)
+```
+
+Testing the significance of seeds:temp_diff_s
+
+```{r}
+aster22_pois_2 <- reaster(fixed=resp ~ varb+seeds:(temp_s+I(temp_diff_s^2)), 
+                 random=list(plot= ~0 + surv01:plot + fl01:plot + fls:plot + 
+                               fr01:plot + frs:plot + seeds:plot), 
+                 pred, fam, famlist=famlist1, varb, id, root, 
+                 data = redata22)
+```
+
+```{r}
+anova(aster22_pois_2,aster22_pois)
+```
+
+Testing the significance of seeds:I(temp_diff_s^2)
+
+```{r}
+aster22_pois_3 <- reaster(fixed=resp ~ varb+seeds:(temp_s+temp_diff_s),
+                          random=list(plot= ~0 + surv01:plot + fl01:plot +
+                                        fls:plot + fr01:plot + frs:plot +
+                                        seeds:plot),
+                          pred, fam, famlist=famlist1, varb, id, root,
+                          data = redata22)
+```
+
+```{r}
+anova(aster22_pois_3,aster22_pois)
+```
+
+### Predictions
+
+I need to use the aster (not reaster) models for predictions, see https://groups.google.com/g/aster-analysis-user-group/c/oWj8z6snqnQ/m/hJ5FVjW8GQMJ
+
+"Values were predicted using a fixed-effect aster model, rather than the random-effect model used to test significance of fixed effects, as parameter estimates from random-effects models are difficult to interpret (Magnoli 2020)"
+
+#### seeds:temp_s
+
+```{r}
+#quantile(redata22$temp_s,probs = c(0.05,0.95))
+# Prediction for the range with the highest 5% removed
+# NOT USED SO FAR
+
+# make prediction df
+aster22_predict1 <- data.frame(
+  expand_grid(temp_s = seq(from = range(redata22$temp_s)[1],
+                           to = range(redata22$temp_s)[2],
+                           length.out = 100)),
+  #OK from here to below? Not sure...
+  temp_diff_s = 0, # scaled so mean=0
+  surv = 1,
+  fl_01 = 1,
+  nfl = 1,
+  fr_01 = 1,
+  nfr = 1,
+  nseed = 0,
+  root = 1
+)
+
+# reshape data to long format
+aster22_predict1_long <- reshape(as.data.frame(aster22_predict1), 
+                              varying = list(vars), direction = "long", 
+                              timevar = "varb", times = as.factor(vars), 
+                              v.names = "resp")
+
+# add artifice
+aster22_predict1_long$seeds <- as.integer(ifelse(
+  aster22_predict1_long$varb == "nseed", 1, 0))
+
+aster22_predict1.df <- aster22_predict1_long
+
+# fixed model predictions
+aster22.p1 <- predict(aster22_noplot_pois, # Use aster model and not reaster!
+                      newdata = aster22_predict1_long,
+                      varvar = varb,idvar = id, root = root,
+                      #info.tol = 1e-11, 
+                      se.fit = T)
+
+aster22_predict1.df$fit <- aster22.p1$fit
+aster22_predict1.df$se <- aster22.p1$se.fit
+
+aster22_predict1.df.seeds <- aster22_predict1.df %>%
+  filter(varb == "nseed")
+
+aster22_predict1.df.seeds<-aster22_predict1.df.seeds%>%
+  mutate(ymin=fit-se,ymax=fit+se)
+
+original_mean_temp_22<-as.numeric(data_transplants_aster%>%
+                                    filter(year==2022)%>%
+                                    summarise(mean_temp=mean(temp)))
+original_sd_temp_22<-as.numeric(data_transplants_aster%>%
+                                  filter(year==2022)%>%
+                                  summarise(sd_temp=sd(temp)))
+
+aster22_predict1.df.seeds<-aster22_predict1.df.seeds%>%
+  mutate(temp=temp_s*original_sd_temp_22+original_mean_temp_22)
+```
+
+#### seeds:temp_diff_s
+
+```{r}
+#quantile(redata22$temp_diff_s,probs = c(0.05,0.95))
+# Prediction for the range with the highest 5% removed
+# NOT USED SO FAR
+
+# make prediction df
+aster22_predict2 <- data.frame(
+  expand_grid(temp_diff_s = seq(from = range(redata22$temp_diff_s)[1],
+                           to = range(redata22$temp_diff_s)[2],
+                           length.out = 100)),
+  #OK from here to below? Not sure...
+  temp_s = 0, # scaled so mean=0
+  surv = 1,
+  fl_01 = 1,
+  nfl = 1,
+  fr_01 = 1,
+  nfr = 1,
+  nseed = 0,
+  root = 1
+)
+
+# reshape data to long format
+aster22_predict2_long <- reshape(as.data.frame(aster22_predict2), 
+                              varying = list(vars), direction = "long", 
+                              timevar = "varb", times = as.factor(vars), 
+                              v.names = "resp")
+
+# add artifice
+aster22_predict2_long$seeds <- as.integer(ifelse(
+  aster22_predict2_long$varb == "nseed", 1, 0))
+
+aster22_predict2.df <- aster22_predict2_long
+
+# fixed model predictions
+aster22.p2 <- predict(aster22_noplot_pois, # Use aster model and not reaster!
+                      newdata = aster22_predict2_long,
+                      varvar = varb,idvar = id, root = root,
+                      #info.tol = 1e-11, 
+                      se.fit = T)
+
+aster22_predict2.df$fit <- aster22.p2$fit
+aster22_predict2.df$se <- aster22.p2$se.fit
+
+aster22_predict2.df.seeds <- aster22_predict2.df %>%
+  filter(varb == "nseed")
+
+aster22_predict2.df.seeds<-aster22_predict2.df.seeds%>%
+  mutate(ymin=fit-se,ymax=fit+se)
+
+original_mean_temp_diff_22<-as.numeric(data_transplants_aster%>%
+                                         filter(year==2022)%>%
+                                         summarise(mean_temp_diff=mean(temp_diff)))
+original_sd_temp_diff_22<-as.numeric(data_transplants_aster%>%
+                                       filter(year==2022)%>%
+                                       summarise(sd_temp_diff=sd(temp_diff)))
+
+aster22_predict2.df.seeds<-aster22_predict2.df.seeds%>%
+  mutate(temp_diff=temp_diff_s*original_sd_temp_diff_22+
+           original_mean_temp_diff_22)
+```
+
+## 2023
+
+## HERE: check survival 22-23
+
+Reshape data:
+
+```{r}
+redata23 <- reshape(data.frame(data_transplants_aster%>%
+                                 filter(year==2023&!is.na(surv))%>%
+                                 # CHECK: plants that we know if they survived or not in 2023
+                      dplyr::select(plot,poll_type,temp,temp_diff,
+                                    surv,fl_01,nfl,fr_01,nfr,nseed)), 
+                  varying = list(vars),
+                  direction = "long", 
+                  timevar = "varb", 
+                  times = as.factor(vars), v.names = "resp")
+redata23 <- data.frame(redata23, root = 1) 
+```
+
+```{r}
+names(data.frame(data_transplants_aster%>%filter(year==2023&!is.na(surv))%>%
+                      dplyr::select(plot,poll_type,temp,temp_diff,
+                                    surv,flowering,nfl,fruiting,nfr,nseed)))
+names(redata23)
+nrow(data.frame(data_transplants_aster%>%filter(year==2023&!is.na(surv))%>%
+                      dplyr::select(plot,poll_type,temp,temp_diff,
+                                    surv,flowering,nfl,fruiting,nfr,nseed)))
+nrow(redata23)
+nrow(data.frame(data_transplants_aster%>%filter(year==2023&!is.na(surv))%>%
+                      dplyr::select(plot,poll_type,temp,temp_diff,
+                                    surv,flowering,nfl,fruiting,nfr,nseed)))*
+  length(vars)
+sapply(redata23, class)
+levels(redata23$varb)
+length(unique(redata23$id))
+```
+
+Look at Poisson distributions for flowers, fruits and seeds:
+
+```{r}
+# For flowers
+nfl.dist_23 <- (data_transplants_aster%>%
+  filter(year==2023&!is.na(surv)))$nfl[(data_transplants_aster%>%
+                             filter(year==2023&!is.na(surv)))$fl_01 == 1]
+length(nfl.dist_23) # 403
+sum(nfl.dist_23 == 0) # 0
+nfl.parms_23 <- fitdistr(nfl.dist_23, "poisson")
+nfl.parms_23 # lambda = 14.3176179
+
+# For fruits
+nfr.dist_23 <- (data_transplants_aster%>%
+  filter(year==2023&!is.na(surv)))$nfr[(data_transplants_aster%>%
+                             filter(year==2023&!is.na(surv)))$fr_01 == 1]
+length(nfr.dist_23) # 390
+sum(nfr.dist_23 == 0) # 0
+nfr.parms_23 <- fitdistr(nfr.dist_23, "poisson")
+nfr.parms_23 # lambda = 12.4282051 
+
+# For seeds
+nseed.dist_23 <- (data_transplants_aster%>%
+  filter(year==2023&!is.na(surv)))$nseed[(data_transplants_aster%>%
+                             filter(year==2023&!is.na(surv)))$nfr > 0]
+length(nseed.dist_23) # 390
+sum(nseed.dist_23 == 0) # 61 with nfr>0 and nseed=0 - OK?
+nseed.parms_23 <- fitdistr(nseed.dist_23, "poisson")
+nseed.parms_23 # lambda = 53.0179487 
+
+# Compare
+hist(nfl.dist_23,col = rgb(1, 0, 0, 0.5),breaks=10)
+hist(rpois(403, lambda = 14.3176179),col = rgb(0, 0, 1, 0.5),
+     add=T,breaks=10)
+hist(nfr.dist_23,col = rgb(1, 0, 0, 0.5),breaks=10)
+hist(rpois(390, lambda = 12.4282051),col = rgb(0, 0, 1, 0.5),
+     add=T,breaks=10)
+hist(nseed.dist_23,col = rgb(1, 0, 0, 0.5),breaks=10)
+hist(rpois(390, lambda = 53.0179487),col = rgb(0, 0, 1, 0.5),
+     add=T,breaks=10)
+```
+
+Look at negative binomial distributions for flowers, fruits and seeds:
+
+```{r}
+# For flowers
+nfl.parms2_23 <- fitdistr(nfl.dist_23, "negative binomial")
+nfl.parms2_23 # size = 1.23310598
+
+# For fruits
+nfr.parms2_23 <- fitdistr(nfr.dist_23, "negative binomial")
+nfr.parms2_23 # size = 1.21845714
+
+# For seeds
+nseed.parms2_23 <- fitdistr(nseed.dist_23, "negative binomial")
+# Warning message: In densfun(x, parm[1], parm[2], ...) : NaNs produced - OK?
+nseed.parms2_23 # size = 3.555838
+
+# Compare
+hist(nfl.dist_23,col = rgb(1, 0, 0, 0.5),breaks=10)
+hist(rnbinom(403, size = 1.23310598, mu = 14.31761810),col = rgb(0, 0, 1, 0.5),
+     add=T,breaks=10)
+hist(nfr.dist_23,col = rgb(1, 0, 0, 0.5),breaks=10)
+hist(rnbinom(390, size = 1.32845749, mu = 12.42820377),col = rgb(0, 0, 1, 0.5),
+     add=T,breaks=10)
+hist(nseed.dist_23,col = rgb(1, 0, 0, 0.5),breaks=10)
+hist(rnbinom(390, size = 0.7177442, mu = 3.1902573),col = rgb(0, 0, 1, 0.5),
+     add=T,breaks=10)
+```
+
+Specifying families:
+
+```{r}
+fam <- c(1,2,3,4,5,6) # specifies the one-parameter exponential families for the nodes
+famlist <- list(fam.bernoulli(), # surv
+                fam.bernoulli(), # fl_01
+                fam.truncated.negative.binomial(size=1.23310598,
+                                                truncation = 0), # nfl
+                fam.bernoulli(),# fr_01
+                fam.truncated.negative.binomial(size=1.32845749,
+                                                truncation = 0),# nfr
+                fam.negative.binomial(size=0.7177442)# nseed
+                )
+vars[fam == 1]
+vars[fam == 2]
+vars[fam == 3]
+vars[fam == 4]
+vars[fam == 5]
+vars[fam == 6]
+```
+
+Creating the fitness variable of interest (and others):
+
+```{r}
+surv01 <- grep("surv", as.character(redata23$varb))
+surv01 <- is.element(seq(along = redata23$varb), surv01)
+redata23 <- data.frame(redata23, surv01 = as.integer(surv01))
+
+fl01 <- grep("fl_01", as.character(redata23$varb))
+fl01 <- is.element(seq(along = redata23$varb), fl01)
+redata23 <- data.frame(redata23, fl01 = as.integer(fl01))
+
+fls <- grep("nfl", as.character(redata23$varb))
+fls <- is.element(seq(along = redata23$varb), fls)
+redata23 <- data.frame(redata23, fls = as.integer(fls))
+
+fr01 <- grep("fr_01", as.character(redata23$varb))
+fr01 <- is.element(seq(along = redata23$varb), fr01)
+redata23 <- data.frame(redata23, fr01 = as.integer(fr01))
+
+frs <- grep("nfr", as.character(redata23$varb))
+frs <- is.element(seq(along = redata23$varb), frs)
+redata23 <- data.frame(redata23, frs = as.integer(frs))
+
+seeds <- grep("nseed", as.character(redata23$varb))
+seeds <- is.element(seq(along = redata23$varb), seeds)
+redata23 <- data.frame(redata23, seeds = as.integer(seeds))
+
+names(redata23)
+```
+
+Center the predictors (I think we do not need to use standardized predictors in Aster models, but centering the predictors helps the model to converge):
+
+```{r}
+redata23$temp_c<-redata23$temp-mean(redata23$temp)
+redata23$temp_diff_c<-redata23$temp_diff-mean(redata23$temp_diff)
+```
+
+Scaled predictors (in case we need to use them):
+
+```{r}
+redata23$temp_s<-scale(redata23$temp)
+redata23$temp_diff_s<-scale(redata23$temp_diff)
+```
+
+### Fit model
+
+#### Check effect of pollination
+
+```{r}
+aster23_poll_pois <- reaster(fixed=resp ~ varb+seeds:(poll_type),
+                 random=list(plot= ~0 + seeds:plot),  # Using more random effects gives error
+                             pred, fam, famlist=famlist1, varb, id, root, 
+                             data = redata23)
+```
+
+```{r}
+summary(aster23_poll_pois)
+```
+
+There seems to be no effect - remove from further models.
+
+#### Negative binomial for counts
+
+Fitting the full Aster model (with plot as random):
+
+```{r}
+aster23 <- reaster(fixed=resp ~ varb+seeds:(temp_s+temp_diff_s+I(temp_diff_s^2)), 
+                 random=list(plot= ~0 + 
+                               #surv01:plot + fl01:plot + fls:plot +
+                               #fr01:plot + frs:plot +
+                               seeds:plot), # Including more random effects gives error
+                             pred, fam, famlist=famlist, varb, id, root, 
+                             data = redata23)
+```
+
+```{r}
+summary(aster23, 
+        show.graph = TRUE # Table about the graph structure in the printout
+        ) # We can use info.tol = 1e-11 To help the model to converge
+# (see https://groups.google.com/g/aster-analysis-user-group/c/xXXROez8aAA/m/BrNE6whiIEQJ)
+```
+
+Fitting the full Aster model (without plot as random):
+
+```{r}
+aster23_noplot <- aster(resp ~ varb+seeds:(temp_s+temp_diff_s+I(temp_diff_s^2)), 
+                             pred, fam, famlist=famlist, varb, id, root, 
+                             data = redata23)
+```
+
+Compare:
+
+```{r}
+anova(aster23_noplot,aster23)
+```
+
+LRT not significant, does this mean that we can discard plot as random effect and use aster instead of reaster?
+
+#### (USE) Poisson for counts
+
+Fitting the full Aster model (with plot as random):
+
+```{r}
+aster23_pois <- reaster(fixed=resp ~ varb+seeds:(temp_s+temp_diff_s+I(temp_diff_s^2)), 
+                 random=list(plot= ~0 + surv01:plot + fl01:plot + fls:plot + 
+                               fr01:plot + frs:plot + seeds:plot), 
+                 pred, fam, famlist=famlist1, varb, id, root, 
+                 data = redata23)
+```
+
+```{r}
+summary(aster23_pois)
+```
+
+Fitting the full Aster model (without plot as random):
+
+```{r}
+aster23_noplot_pois <- aster(resp ~ varb+seeds:(temp_s+temp_diff_s+I(temp_diff_s^2)),
+                             pred, fam, famlist=famlist1, varb, id, root, 
+                             data = redata23)
+```
+
+```{r}
+summary(aster23_noplot_pois)
+```
+
+Compare:
+
+```{r}
+anova(aster23_noplot_pois,aster23_pois)
+```
+
+LRT significant, I guess this means that we cannot discard plot as random effect and need to use reaster?
+
+### LRTs
+
+The Aster manual advises to not look at significances in the summary, but instead compare models with a likelihood ratio test to evaluate significance of each term. The comparison between two or more models . . . will only be valid if they are (1) fitted to the same dataset, (2) models are nested, (3) models are of the same type (all conditional or all unconditional), (4) have the same dependence graph and exponential families. None of this is currently checked.
+
+Determine the significance of fixed effects by comparing submodels without the term of interest to the full model using LRTs.
+
+Use LRTs comparing submodels to fuller models to test each predictor of interest.
+
+Submodels:
+
+Testing the significance of seeds:temp_s
+
+```{r}
+aster23_pois_modif <- reaster(fixed=resp ~ varb+seeds:(temp_s+temp_diff_s+I(temp_diff_s^2)), 
+                 random=list(plot= ~0 + 
+                               #surv01:plot + fl01:plot + fls:plot + 
+                               #fr01:plot + frs:plot + 
+                               seeds:plot), 
+                 pred, fam, famlist=famlist1, varb, id, root, 
+                 data = redata23)
+aster23_pois_1 <- reaster(fixed=resp ~ varb+seeds:(temp_diff_s+I(temp_diff_s^2)), 
+                          random=list(plot= ~0 + 
+                                        #surv01:plot + fl01:plot + 
+                                        #fls:plot + fr01:plot + frs:plot + 
+                                        seeds:plot), 
+                          pred, fam, famlist=famlist1, varb, id, root, 
+                          data = redata23)
+# aster23_pois_1 gives error with all random factors,
+# so we need a modified version of aster23_pois
+# with a similar model matrix for random effects
+```
+
+```{r}
+anova(aster23_pois_1,aster23_pois_modif)
+```
+
+Testing the significance of seeds:temp_diff_s
+
+```{r}
+aster23_pois_2 <- reaster(fixed=resp ~ varb+seeds:(temp_s+I(temp_diff_s^2)), 
+                 random=list(plot= ~0 + surv01:plot + fl01:plot + fls:plot + 
+                               fr01:plot + frs:plot + seeds:plot), 
+                 pred, fam, famlist=famlist1, varb, id, root, 
+                 data = redata23)
+```
+
+```{r}
+anova(aster23_pois_2,aster23_pois)
+```
+
+Testing the significance of seeds:I(temp_diff_s^2)
+
+```{r}
+aster23_pois_3 <- reaster(fixed=resp ~ varb+seeds:(temp_s+temp_diff_s),
+                          random=list(plot= ~0 + surv01:plot + fl01:plot +
+                                        fls:plot + fr01:plot + frs:plot +
+                                        seeds:plot),
+                          pred, fam, famlist=famlist1, varb, id, root,
+                          data = redata23)
+```
+
+```{r}
+anova(aster23_pois_3,aster23_pois)
+```
+
+### Predictions
+
+#### seeds:temp_s
+
+```{r}
+#quantile(redata23$temp_s,probs = c(0.05,0.95))
+# Prediction for the range with the highest 5% removed
+# NOT USED SO FAR
+
+# make prediction df
+aster23_predict1 <- data.frame(
+  expand_grid(temp_s = seq(from = range(redata23$temp_s)[1],
+                           to = range(redata23$temp_s)[2],
+                           length.out = 100)),
+  #OK from here to below? Not sure...
+  temp_diff_s = 0, # scaled so mean=0
+  surv = 1,
+  fl_01 = 1,
+  nfl = 1,
+  fr_01 = 1,
+  nfr = 1,
+  nseed = 0,
+  root = 1
+)
+
+# reshape data to long format
+aster23_predict1_long <- reshape(as.data.frame(aster23_predict1), 
+                              varying = list(vars), direction = "long", 
+                              timevar = "varb", times = as.factor(vars), 
+                              v.names = "resp")
+
+# add artifice
+aster23_predict1_long$seeds <- as.integer(ifelse(
+  aster23_predict1_long$varb == "nseed", 1, 0))
+
+aster23_predict1.df <- aster23_predict1_long
+
+# fixed model predictions
+aster23.p1 <- predict(aster23_noplot_pois, # Use aster model and not reaster!
+                      newdata = aster23_predict1_long,
+                      varvar = varb,idvar = id, root = root,
+                      #info.tol = 1e-11, 
+                      se.fit = T)
+
+aster23_predict1.df$fit <- aster23.p1$fit
+aster23_predict1.df$se <- aster23.p1$se.fit
+
+aster23_predict1.df.seeds <- aster23_predict1.df %>%
+  filter(varb == "nseed")
+
+aster23_predict1.df.seeds<-aster23_predict1.df.seeds%>%
+  mutate(ymin=fit-se,ymax=fit+se)
+
+original_mean_23<-as.numeric(data_transplants_aster%>%
+                               filter(year==2023&!is.na(surv))%>%
+                               summarise(mean_temp=mean(temp)))
+original_sd_23<-as.numeric(data_transplants_aster%>%
+                             filter(year==2023&!is.na(surv))%>%
+                             summarise(sd_temp=sd(temp)))
+
+aster23_predict1.df.seeds<-aster23_predict1.df.seeds%>%
+  mutate(temp=temp_s*original_sd_23+original_mean_23)
+```
+
+#### seeds:temp_diff_s
+
+```{r}
+#quantile(redata23$temp_diff_s,probs = c(0.05,0.95))
+# Prediction for the range with the highest 5% removed
+# NOT USED SO FAR
+
+# make prediction df
+aster23_predict2 <- data.frame(
+  expand_grid(temp_diff_s = seq(from = range(redata23$temp_diff_s)[1],
+                           to = range(redata23$temp_diff_s)[2],
+                           length.out = 100)),
+  #OK from here to below? Not sure...
+  temp_s = 0, # scaled so mean=0
+  surv = 1,
+  fl_01 = 1,
+  nfl = 1,
+  fr_01 = 1,
+  nfr = 1,
+  nseed = 0,
+  root = 1
+)
+
+# reshape data to long format
+aster23_predict2_long <- reshape(as.data.frame(aster23_predict2), 
+                              varying = list(vars), direction = "long", 
+                              timevar = "varb", times = as.factor(vars), 
+                              v.names = "resp")
+
+# add artifice
+aster23_predict2_long$seeds <- as.integer(ifelse(
+  aster23_predict2_long$varb == "nseed", 1, 0))
+
+aster23_predict2.df <- aster23_predict2_long
+
+# fixed model predictions
+aster23.p2 <- predict(aster23_noplot_pois, # Use aster model and not reaster!
+                      newdata = aster23_predict2_long,
+                      varvar = varb,idvar = id, root = root,
+                      #info.tol = 1e-11, 
+                      se.fit = T)
+
+aster23_predict2.df$fit <- aster23.p2$fit
+aster23_predict2.df$se <- aster23.p2$se.fit
+
+aster23_predict2.df.seeds <- aster23_predict2.df %>%
+  filter(varb == "nseed")
+
+aster23_predict2.df.seeds<-aster23_predict2.df.seeds%>%
+  mutate(ymin=fit-se,ymax=fit+se)
+
+original_mean_temp_diff_23<-as.numeric(data_transplants_aster%>%
+                                         filter(year==2023)%>%
+                                         summarise(mean_temp_diff=mean(temp_diff)))
+original_sd_temp_diff_23<-as.numeric(data_transplants_aster%>%
+                                       filter(year==2023)%>%
+                                       summarise(sd_temp_diff=sd(temp_diff)))
+
+aster23_predict2.df.seeds<-aster23_predict2.df.seeds%>%
+  mutate(temp_diff=temp_diff_s*original_sd_temp_diff_23+
+           original_mean_temp_diff_23)
+```
+
+## Combined aster plots
+
+### All effects
+
+```{r}
+plot_temp_nopoints<-ggplot()+
+  geom_ribbon(data=aster22_predict1.df.seeds,
+              aes(x=temp,y=fit,group=varb,ymin=ymin,ymax=ymax),
+              alpha=0.25,fill="#F8766D")+
+  geom_line(data=aster22_predict1.df.seeds,
+              aes(x=temp,y=fit,group=varb),
+            size=1,linetype="dashed",color="#F8766D")+
+  geom_ribbon(data=aster23_predict1.df.seeds,
+              aes(x=temp,y=fit,group=varb,ymin=ymin,ymax=ymax),
+              alpha=0.25,fill="#00BFC4")+
+  geom_line(data=aster23_predict1.df.seeds,
+              aes(x=temp,y=fit,group=varb),
+            size=1,color="#00BFC4")+
+  xlab("Temperature at planting site (ºC)")+ylab("Predicted fitness")+
+  my_theme_legend()+theme(legend.position="top")
+plot_temp_points<-ggplot()+
+  geom_point(data=data_transplants_aster%>%filter(!is.na(surv)),
+             aes(x=temp,y=nseed,color=year),size=2,alpha=0.2)+
+  geom_ribbon(data=aster22_predict1.df.seeds,
+              aes(x=temp,y=fit,group=varb,ymin=ymin,ymax=ymax),
+              alpha=0.25,fill="#F8766D")+
+  geom_line(data=aster22_predict1.df.seeds,
+              aes(x=temp,y=fit,group=varb),
+            size=1,linetype="dashed",color="#F8766D")+
+  geom_ribbon(data=aster23_predict1.df.seeds,
+              aes(x=temp,y=fit,group=varb,ymin=ymin,ymax=ymax),
+              alpha=0.25,fill="#00BFC4")+
+  geom_line(data=aster23_predict1.df.seeds,
+              aes(x=temp,y=fit,group=varb),
+            size=1,color="#00BFC4")+
+  xlab("Temperature at planting site (ºC)")+ylab("Predicted fitness")+
+  my_theme_legend()+theme(legend.position="top")
+```
+
+```{r}
+plot_temp_diff_nopoints<-ggplot()+
+  geom_ribbon(data=aster22_predict2.df.seeds,
+              aes(x=temp_diff,y=fit,group=varb,ymin=ymin,ymax=ymax),
+              alpha=0.25,fill="#F8766D")+
+  geom_line(data=aster22_predict2.df.seeds,
+            aes(x=temp_diff,y=fit,group=varb),
+            size=1,color="#F8766D")+
+  geom_ribbon(data=aster23_predict2.df.seeds,
+              aes(x=temp_diff,y=fit,group=varb,ymin=ymin,ymax=ymax),
+              alpha=0.25,fill="#00BFC4")+
+  geom_line(data=aster23_predict2.df.seeds,
+              aes(x=temp_diff,y=fit,group=varb),
+            size=1,linetype="dashed",color="#00BFC4")+
+  geom_hline(yintercept=72.23646,linetype="dotted",color="#F8766D")+
+  geom_vline(xintercept=-21.39296,linetype="dotted",color="#F8766D")+
+  xlab("Temperature difference (ºC)")+ylab("Predicted fitness")+
+  my_theme_legend()+theme(legend.position="top")
+plot_temp_diff_points<-ggplot()+
+  geom_point(data=data_transplants_aster%>%filter(!is.na(surv)),
+             aes(x=temp_diff,y=nseed,color=year),size=2,alpha=0.2)+
+  geom_ribbon(data=aster22_predict2.df.seeds,
+              aes(x=temp_diff,y=fit,group=varb,ymin=ymin,ymax=ymax),
+              alpha=0.25,fill="#F8766D")+
+  geom_line(data=aster22_predict2.df.seeds,
+            aes(x=temp_diff,y=fit,group=varb),
+            size=1,color="#F8766D")+
+  geom_ribbon(data=aster23_predict2.df.seeds,
+              aes(x=temp_diff,y=fit,group=varb,ymin=ymin,ymax=ymax),
+              alpha=0.25,fill="#00BFC4")+
+  geom_line(data=aster23_predict2.df.seeds,
+              aes(x=temp_diff,y=fit,group=varb),
+            size=1,linetype="dashed",color="#00BFC4")+
+  geom_hline(yintercept=72.23646,linetype="dotted",color="#F8766D")+
+  geom_vline(xintercept=-21.39296,linetype="dotted",color="#F8766D")+
+  xlab("Temperature difference (ºC)")+ylab("Predicted fitness")+
+  my_theme_legend()+theme(legend.position="top")
+```
+
+```{r}
+aster_plot_nopoints<-ggarrange(plot_temp_nopoints+ggtitle("A)"),
+                               plot_temp_diff_nopoints+ggtitle("B)"))
+aster_plot_points<-ggarrange(plot_temp_points+ggtitle("A)"),
+                               plot_temp_diff_points+ggtitle("B)"))
+aster_plot_nopoints
+aster_plot_points
+ggsave(filename="output/figures/aster_plot_nopoints.tiff",
+       plot=aster_plot_nopoints,device="tiff",width=20,height=10,
+       units="cm",dpi=300)
+ggsave(filename="output/figures/aster_plot_points.tiff",
+       plot=aster_plot_points,device="tiff",width=20,height=10,
+       units="cm",dpi=300)
+```
+
+### (USE) significant effects
+
+```{r}
+plot_temp_23_nopoints<- ggplot()+
+  geom_ribbon(data=aster23_predict1.df.seeds,
+              aes(x=temp,y=fit,group=varb,ymin=ymin,ymax=ymax),
+              alpha=0.25)+
+  geom_line(data=aster23_predict1.df.seeds,
+              aes(x=temp,y=fit,group=varb),
+            size=1)+
+  xlab("Temperature at planting site (ºC)")+ylab("Predicted fitness")+
+  my_theme()
+plot_temp_23_points<-ggplot()+
+  geom_point(data=data_transplants_aster%>%
+               filter(year==2023&!is.na(surv)),
+             aes(x=temp,y=nseed),size=2,alpha=0.2)+
+  geom_ribbon(data=aster23_predict1.df.seeds,
+              aes(x=temp,y=fit,group=varb,ymin=ymin,ymax=ymax),
+              alpha=0.25)+
+  geom_line(data=aster23_predict1.df.seeds,
+              aes(x=temp,y=fit,group=varb),
+            size=1)+
+  xlab("Temperature at planting site (ºC)")+ylab("Predicted fitness")+
+  my_theme()
+plot_temp_23_nopoints
+plot_temp_23_points
+```
+
+```{r}
+plot_temp_diff_22_nopoints<-ggplot()+
+  geom_ribbon(data=aster22_predict2.df.seeds,
+              aes(x=temp_diff,y=fit,group=varb,ymin=ymin,ymax=ymax),
+              alpha=0.25)+
+  geom_line(data=aster22_predict2.df.seeds,
+            aes(x=temp_diff,y=fit,group=varb),
+            size=1)+
+  geom_hline(yintercept=72.23646,linetype="dashed")+
+  geom_vline(xintercept=-21.39296,linetype="dashed")+
+  xlab("Temperature difference (ºC)")+ylab("Predicted fitness")+
+  my_theme()
+plot_temp_diff_22_points<-ggplot()+
+  geom_point(data=data_transplants_aster%>%
+               filter(year==2022),
+             aes(x=temp_diff,y=nseed),size=2,alpha=0.2)+
+  geom_ribbon(data=aster22_predict2.df.seeds,
+              aes(x=temp_diff,y=fit,group=varb,ymin=ymin,ymax=ymax),
+              alpha=0.25)+
+  geom_line(data=aster22_predict2.df.seeds,
+            aes(x=temp_diff,y=fit,group=varb),
+            size=1)+
+  geom_hline(yintercept=72.23646,linetype="dashed")+
+  geom_vline(xintercept=-21.39296,linetype="dashed")+
+  xlab("Temperature difference (ºC)")+ylab("Predicted fitness")+
+  my_theme()
+plot_temp_diff_22_nopoints
+plot_temp_diff_22_points
+```
+
+
+
+
+```{r}
+aster_plot_nopoints_sig<-ggarrange(plot_temp_diff_22_nopoints+ggtitle("2022"),
+                                        plot_temp_23_nopoints+ggtitle("2023"))
+aster_plot_points_sig<-ggarrange(plot_temp_diff_22_points+ggtitle("2022"),
+                                        plot_temp_23_points+ggtitle("2023"))
+aster_plot_nopoints_sig
+aster_plot_points_sig
+ggsave(filename="output/figures/aster_plot_nopoints_sig.tiff",
+       plot=aster_plot_nopoints_sig,device="tiff",width=20,height=10,
+       units="cm",dpi=300)
+ggsave(filename="output/figures/aster_plot_points_sig.tiff",
+       plot=aster_plot_points_sig,device="tiff",width=20,height=10,
+       units="cm",dpi=300)
+```
+
+# HERE
+
+Two cases with no fruits but seeds (n_tot_seed >0)! I should probably revise all the data row by row and rerun all analyses.
+
+```{r}
+data_transplants_aster%>%
+  filter(year==2023&!is.na(surv))%>%
+  filter(n_tot_seed>0&nseed==0)
+```
+
+
+# Session info
+
+```{r}
+sessionInfo()
+```

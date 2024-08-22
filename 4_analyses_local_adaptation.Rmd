@@ -1,0 +1,694 @@
+---
+title: Local adaptation in Cerastium fontanum using a reciprocal transplant experiment
+author: "Alicia Valdés"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    toc: yes
+    toc_depth: 4
+  html_document:
+    toc: yes
+    toc_depth: '4'
+    df_print: paged
+subtitle: Analyses with FFD
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+options(tibble.width = Inf)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+```{r load packages, include=FALSE}
+library(tidyverse)
+library(readxl)
+library(RColorBrewer)
+library(knitr)
+library(ggthemes)
+library(glmmTMB)
+library(lme4)
+library(lmerTest)
+library(car)
+library(sjPlot)
+library(ggeffects)
+library(performance)
+library(DHARMa)
+library(MASS)
+```
+
+```{r Define ggplot themes and palettes, include=FALSE}
+my_theme <- function(){
+  theme_base()+theme(plot.background=element_rect(fill="white", colour=NA))+
+  theme(legend.position="none")+theme(text=element_text(family="serif"))+
+  theme(plot.title = element_text(hjust =-0.06))
+}
+my_theme_legend <- function(){
+  theme_base()+theme(plot.background=element_rect(fill="white", colour=NA))+
+  theme(text=element_text(family="serif"))+
+  theme(plot.title = element_text(hjust =-0.06))
+}
+myPalette <- colorRampPalette(brewer.pal(11, "YlOrRd"))
+```
+
+# Read clean data from .csv files
+
+```{r}
+data_transplants <- read_csv("data/clean/data_transplants.csv")
+```
+
+# Calculate temperature difference
+
+Calculate absolute temperature difference between experienced temperature (temp) and mid-parental temperature.
+
+```{r}
+data_transplants<-data_transplants%>%
+  mutate(temp_diff=abs(temp-((temp_mother+temp_father)/2)))
+hist(data_transplants$temp_diff)
+```
+
+
+# Survival
+
+Need to get data from file "Cerastium survival" --> for 2023
+
+```{r}
+data_transplants<-data_transplants%>%
+  mutate(surv_22=ifelse(is.na(F_NF_A),0,1))
+table(data_transplants$surv_22)
+hist(data_transplants$surv_22)
+```
+
+Of 858 plants, 808 survived in 2022.
+
+Model including plot as random, poll_type was not included as random because there are only 2 levels (and binomial glm showed no effect of poll_type on surv_22).
+
+```{r}
+mod_surv_22<-glmmTMB(surv_22~temp+temp_diff+(1|plot),data_transplants,
+                     family="binomial")
+# Using glmer, temp_diff significant, but model convergence warning.
+# Adding glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 100000))
+# also gives temp_diff NS, as glmmTMB.
+summary(mod_surv_22)
+```
+
+## Predictions
+
+```{r}
+plot(ggpredict(mod_surv_22,terms=c("temp[all]")),add.data=T)
+plot(ggpredict(mod_surv_22,terms=c("temp_diff[all]")),add.data=T) # NS
+```
+
+## Diagnostics
+
+```{r}
+plot(simulateResiduals(mod_surv_22))
+```
+
+# Median height of flowering stem
+
+```{r}
+hist(data_transplants$median_h)
+hist(log(data_transplants$median_h))
+hist(sqrt(data_transplants$median_h))
+```
+
+```{r}
+data_transplants<-data_transplants%>%
+  mutate(median_h_log=log(median_h),median_h_sqrt=sqrt(median_h))
+```
+
+Model including plot as random, poll_type was not included as random because there are only 2 levels (and lm showed no effect of poll_type on median_h).
+
+```{r}
+mod_median_h_22<-glmmTMB(median_h~temp+temp_diff+(1|plot),data_transplants)
+mod_median_h_log_22<-glmmTMB(median_h_log~temp+temp_diff+(1|plot),
+                             data_transplants) # temp* (P= 0.0483)
+mod_median_h_sqrt_22<-glmmTMB(median_h_sqrt~temp+temp_diff+(1|plot),
+                              data_transplants)
+summary(mod_median_h_22)
+summary(mod_median_h_log_22)
+summary(mod_median_h_sqrt_22)
+```
+
+## Predictions
+
+```{r}
+plot(ggpredict(mod_median_h_log_22,terms=c("temp[all]")),add.data=T)
+```
+
+## Diagnostics
+
+```{r}
+plot(simulateResiduals(mod_median_h_22))
+plot(simulateResiduals(mod_median_h_log_22))
+plot(simulateResiduals(mod_median_h_sqrt_22))
+```
+
+```{r}
+AIC(mod_median_h_22,mod_median_h_log_22,mod_median_h_sqrt_22)
+```
+
+Keep model with log?
+
+# Probability of flowering
+
+```{r}
+data_transplants<-data_transplants%>%
+  mutate(flowering_22=ifelse(F_NF_A=="F",1,ifelse(F_NF_A=="NF",0,NA)))
+table(data_transplants$flowering_22)
+hist(data_transplants$flowering_22)
+```
+ 
+Of 808 plants that survived in 2022, 603 flowered and 204 did not flower (and 1 was aborted, not used here).
+4 were grazed before they peaked, they are included as flowering here.
+
+Does pollination type have an effect on probability of flowering?
+
+```{r}
+summary(glm(flowering_22~poll_type,data_transplants,family="binomial"))
+plot(ggpredict(glm(flowering_22~poll_type,data_transplants,family="binomial")))
+```
+
+Yes! Cross-pollinated have a higher probability of flowering than self-pollinated.
+
+Include in the model as random (but only 2 levels!) or fixed:
+
+Model including plot as random, and poll_type as random:
+
+```{r}
+mod_flowering_22a<-glmmTMB(flowering_22~temp+temp_diff+(1|plot)+(1|poll_type),
+                          data_transplants,family="binomial")
+summary(mod_flowering_22a)
+```
+ 
+Model including plot as random, and poll_type as fixed:
+
+```{r}
+mod_flowering_22b<-glmmTMB(flowering_22~temp+temp_diff+poll_type+(1|plot),
+                          data_transplants,family="binomial")
+summary(mod_flowering_22b)
+```
+
+## Predictions
+
+```{r}
+plot(ggpredict(mod_flowering_22a,terms=c("temp[all]")),add.data=T)
+plot(ggpredict(mod_flowering_22b,terms=c("temp[all]")),add.data=T)
+plot(ggpredict(mod_flowering_22b,terms=c("poll_type")))
+```
+
+## Diagnostics
+
+```{r}
+plot(simulateResiduals(mod_flowering_22a))
+plot(simulateResiduals(mod_flowering_22b))
+```
+
+ 
+# Number of flowers
+
+## tot_fl_bodies
+
+### Without median_h
+
+Including only plants that flowered. 4 that were grazed before they peaked are not included
+
+```{r}
+hist((data_transplants%>%filter(flowering_22==1&tot_fl_bodies>0))$tot_fl_bodies)
+```
+
+Does pollination type have an effect on number of flowers?
+
+```{r}
+summary(glm.nb(tot_fl_bodies~poll_type,
+            data_transplants%>%filter(flowering_22==1&tot_fl_bodies>0)))
+plot(ggpredict(glm.nb(tot_fl_bodies~poll_type,
+            data_transplants%>%filter(flowering_22==1&tot_fl_bodies>0))))
+```
+
+Yes! Cross-pollinated have a higher number of flowers than self-pollinated.
+
+Include in the model as random (but only 2 levels!) or fixed:
+
+Model including plot as random, and poll_type as random:
+
+```{r}
+mod_nfl_22a<-glmmTMB(tot_fl_bodies~temp+temp_diff+(1|plot)+(1|poll_type),
+                     data_transplants%>%filter(flowering_22==1&tot_fl_bodies>0),
+                     family="nbinom2") # Poisson was overdispersed
+summary(mod_nfl_22a)
+``` 
+
+Model including plot as random, and poll_type as fixed:
+
+```{r}
+mod_nfl_22b<-glmmTMB(tot_fl_bodies~temp+temp_diff+poll_type+(1|plot),
+                     data_transplants%>%filter(flowering_22==1&tot_fl_bodies>0),
+                     family="nbinom2") # Poisson was overdispersed
+summary(mod_nfl_22b)
+``` 
+
+#### Predictions
+
+```{r}
+plot(ggpredict(mod_nfl_22a,terms=c("temp[all]")),add.data=T)
+plot(ggpredict(mod_nfl_22b,terms=c("temp[all]")),add.data=T)
+plot(ggpredict(mod_nfl_22b,terms=c("poll_type")))
+```
+
+#### Diagnostics
+
+```{r}
+plot(simulateResiduals(mod_nfl_22a))
+plot(simulateResiduals(mod_nfl_22b))
+testDispersion(simulateResiduals(mod_nfl_22a),alternative="greater")
+testDispersion(simulateResiduals(mod_nfl_22b),alternative="greater")
+```
+
+### With median_h
+
+Model including plot as random, and poll_type as random:
+
+```{r}
+mod_nfl_mh_22a<-glmmTMB(tot_fl_bodies~temp+temp_diff+median_h+
+                          (1|plot)+(1|poll_type),
+                        data_transplants%>%
+                          filter(flowering_22==1&tot_fl_bodies>0),
+                        family="nbinom2") # Poisson was overdispersed
+summary(mod_nfl_mh_22a)
+``` 
+
+Model including plot as random, and poll_type as fixed:
+
+```{r}
+mod_nfl_mh_22b<-glmmTMB(tot_fl_bodies~temp+temp_diff+median_h+poll_type+
+                          (1|plot),
+                     data_transplants%>%filter(flowering_22==1&tot_fl_bodies>0),
+                     family="nbinom2") # Poisson was overdispersed
+summary(mod_nfl_mh_22b)
+``` 
+
+#### Predictions
+
+```{r}
+plot(ggpredict(mod_nfl_mh_22a,terms=c("temp[all]")),add.data=T)
+plot(ggpredict(mod_nfl_mh_22a,terms=c("median_h[all]")),add.data=T)
+plot(ggpredict(mod_nfl_mh_22b,terms=c("temp[all]")),add.data=T)
+plot(ggpredict(mod_nfl_mh_22b,terms=c("median_h[all]")),add.data=T)
+plot(ggpredict(mod_nfl_mh_22b,terms=c("poll_type")))
+```
+
+#### Diagnostics
+
+```{r}
+plot(simulateResiduals(mod_nfl_mh_22a))
+plot(simulateResiduals(mod_nfl_mh_22b))
+testDispersion(simulateResiduals(mod_nfl_mh_22a),alternative="greater")
+# Slightly overdispersed? p=0.048
+testDispersion(simulateResiduals(mod_nfl_mh_22b),alternative="greater")
+# Slightly overdispersed? p=0.048
+```
+
+## tot_fl_bodies_corr
+
+Correct tot_fl_bodies to tot_fl_bodies_corr, to be at least as high as n_tot_fr.
+
+```{r}
+data_transplants<-data_transplants%>%
+  mutate(tot_fl_bodies_corr=ifelse(n_tot_fr>tot_fl_bodies,n_tot_fr,
+                                   tot_fl_bodies),
+         diff_fr_fl=n_tot_fr-tot_fl_bodies)
+```
+
+Histogram of differences>
+
+```{r}
+hist(data_transplants$diff_fr_fl)
+```
+
+Negative differences: more flowers than fruits - OK
+Positive differences: more fruits than flowers - not OK --> corrected
+
+### Without median_h
+
+Model including plot as random, and poll_type as random:
+
+```{r}
+mod_nflcorr_22a<-glmmTMB(tot_fl_bodies_corr~temp+temp_diff+(1|plot)+
+                           (1|poll_type),
+                     data_transplants%>%
+                       filter(flowering_22==1&tot_fl_bodies_corr>0),
+                     family="nbinom2") # Poisson was overdispersed
+summary(mod_nflcorr_22a)
+``` 
+
+Model including plot as random, and poll_type as fixed:
+
+```{r}
+mod_nflcorr_22b<-glmmTMB(tot_fl_bodies_corr~temp+temp_diff+poll_type+(1|plot),
+                     data_transplants%>%
+                       filter(flowering_22==1&tot_fl_bodies_corr>0),
+                     family="nbinom2") # Poisson was overdispersed
+summary(mod_nflcorr_22b)
+``` 
+
+#### Predictions
+
+```{r}
+plot(ggpredict(mod_nflcorr_22a,terms=c("temp[all]")),add.data=T)
+plot(ggpredict(mod_nflcorr_22b,terms=c("temp[all]")),add.data=T)
+plot(ggpredict(mod_nflcorr_22b,terms=c("poll_type")))
+```
+
+#### Diagnostics
+
+```{r}
+plot(simulateResiduals(mod_nflcorr_22a))
+plot(simulateResiduals(mod_nflcorr_22b))
+testDispersion(simulateResiduals(mod_nflcorr_22a),alternative="greater")
+testDispersion(simulateResiduals(mod_nflcorr_22b),alternative="greater")
+```
+
+### With median_h
+
+Model including plot as random, and poll_type as random:
+
+```{r}
+mod_nflcorr_mh_22a<-glmmTMB(tot_fl_bodies_corr~temp+temp_diff+median_h+
+                          (1|plot)+(1|poll_type),
+                        data_transplants%>%
+                          filter(flowering_22==1&tot_fl_bodies_corr>0),
+                        family="nbinom2") # Poisson was overdispersed
+summary(mod_nflcorr_mh_22a)
+``` 
+
+Model including plot as random, and poll_type as fixed:
+
+```{r}
+mod_nflcorr_mh_22b<-glmmTMB(tot_fl_bodies_corr~temp+temp_diff+median_h+
+                              poll_type+(1|plot),
+                     data_transplants%>%
+                       filter(flowering_22==1&tot_fl_bodies_corr>0),
+                     family="nbinom2") # Poisson was overdispersed
+summary(mod_nflcorr_mh_22b)
+``` 
+
+#### Predictions
+
+```{r}
+plot(ggpredict(mod_nflcorr_mh_22a,terms=c("temp[all]")),add.data=T)
+plot(ggpredict(mod_nflcorr_mh_22a,terms=c("median_h[all]")),add.data=T)
+plot(ggpredict(mod_nflcorr_mh_22b,terms=c("temp[all]")),add.data=T)
+plot(ggpredict(mod_nflcorr_mh_22b,terms=c("median_h[all]")),add.data=T)
+plot(ggpredict(mod_nflcorr_mh_22b,terms=c("poll_type")))
+```
+
+#### Diagnostics
+
+```{r}
+plot(simulateResiduals(mod_nflcorr_mh_22a))
+plot(simulateResiduals(mod_nflcorr_mh_22b))
+testDispersion(simulateResiduals(mod_nflcorr_mh_22a),alternative="greater")
+# Slightly overdispersed? p=0.032
+testDispersion(simulateResiduals(mod_nflcorr_mh_22b),alternative="greater")
+# Slightly overdispersed? p=0.048
+```
+
+# Probability of fruiting
+
+```{r}
+data_transplants<-data_transplants%>%
+  mutate(fruiting_22=ifelse(is.na(F_NF_A),NA, 
+                            # NA for plants that did not survive
+                            ifelse(F_NF_A=="A"|F_NF_A=="NF",NA, 
+                                   # NA for plants that aborted 
+                                   # or did not flower
+                                   ifelse(n_count_fr>0,1,0)))) 
+# 1/0 for plants that produced / did not produce fruits
+table(data_transplants$fruiting_22)
+hist(data_transplants$fruiting_22)
+```
+
+Of 603 plants that flowered in 2022, 582 produced fruits and 21 did not produce fruits.
+
+Model including plot as random, poll_type was not included as random because there are only 2 levels (and binomial glm showed no effect of poll_type on fruiting_22).
+
+```{r}
+mod_fruiting_22<-glmmTMB(fruiting_22~temp+temp_diff+(1|plot),data_transplants,
+                     family="binomial")
+# Using glmer, temp_diff significant, but model convergence warning.
+# Adding glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 100000))
+# also gives temp_diff NS, as glmmTMB.
+summary(mod_fruiting_22)
+```
+
+## Diagnostics
+
+```{r}
+plot(simulateResiduals(mod_fruiting_22))
+```
+
+
+# Number of fruits
+
+Including only plants that flowered. 4 that were grazed before they peaked are not included
+
+```{r}
+hist((data_transplants%>%filter(flowering_22==1&tot_fl_bodies>0))$n_tot_fr)
+```
+
+Does pollination type have an effect on number of fruits?
+
+```{r}
+summary(glm.nb(n_tot_fr~poll_type,
+            data_transplants%>%filter(flowering_22==1&tot_fl_bodies>0)))
+plot(ggpredict(glm.nb(n_tot_fr~poll_type,
+            data_transplants%>%filter(flowering_22==1&tot_fl_bodies>0))))
+```
+
+Yes! Cross-pollinated have a higher number of fruits than self-pollinated.
+
+Include in the model as random (but only 2 levels!) or fixed:
+
+Model including plot as random, and poll_type as random:
+
+```{r}
+mod_nfr_22a<-glmmTMB(n_tot_fr~temp+temp_diff+(1|plot)+(1|poll_type),
+                     data_transplants%>%filter(flowering_22==1&tot_fl_bodies>0),
+                     family="nbinom2") # Poisson was overdispersed
+summary(mod_nfr_22a)
+``` 
+
+ Model including plot as random, and poll_type as fixed:
+
+```{r}
+mod_nfr_22b<-glmmTMB(n_tot_fr~temp+temp_diff+poll_type+(1|plot),
+                     data_transplants%>%filter(flowering_22==1&tot_fl_bodies>0),
+                     family="nbinom2") # Poisson was overdispersed
+summary(mod_nfr_22b)
+``` 
+
+### Predictions
+
+```{r}
+plot(ggpredict(mod_nfr_22a,terms=c("temp[all]")),add.data=T)
+plot(ggpredict(mod_nfr_22b,terms=c("temp[all]")),add.data=T)
+plot(ggpredict(mod_nfr_22b,terms=c("poll_type")))
+```
+
+### Diagnostics
+
+```{r}
+plot(simulateResiduals(mod_nfr_22a))
+plot(simulateResiduals(mod_nfr_22b))
+testDispersion(simulateResiduals(mod_nfr_22a),alternative="greater")
+# Slightly overdispersed? p=0.044
+testDispersion(simulateResiduals(mod_nfr_22b),alternative="greater")
+# Slightly overdispersed? p=0.04
+```
+
+# Fruit set
+
+```{r}
+data_transplants<-data_transplants%>%
+  mutate(fr_set_22=ifelse(fruiting_22==0,NA,n_tot_fr/tot_fl_bodies_corr))
+hist(data_transplants$fr_set_22)
+```
+
+Does pollination type have an effect on fruit set?
+
+```{r}
+summary(glm(fr_set_22~poll_type,
+            data_transplants%>%filter(flowering_22==1&tot_fl_bodies>0),
+            weights=tot_fl_bodies_corr,
+            family="binomial"))
+plot(ggpredict(glm(fr_set_22~poll_type,
+            data_transplants%>%filter(flowering_22==1&tot_fl_bodies>0),
+            weights=tot_fl_bodies_corr,
+            family="binomial")))
+```
+
+Yes! Self-pollinated have a higher fruit set than cross-pollinated (WHY??).
+
+Include in the model as random (but only 2 levels!) or fixed:
+
+Model including plot as random, and poll_type as random:
+
+```{r}
+mod_frset_22a<-glmmTMB(fr_set_22~temp+temp_diff+(1|plot)+(1|poll_type),
+                       weights=tot_fl_bodies_corr,
+                       data_transplants%>%
+                         filter(flowering_22==1&tot_fl_bodies>0),
+                       family="binomial")
+summary(mod_frset_22a)
+``` 
+
+Model including plot as random, and poll_type as fixed:
+
+```{r}
+mod_frset_22b<-glmmTMB(fr_set_22~temp+temp_diff+poll_type+(1|plot),
+                       weights=tot_fl_bodies_corr,
+                       data_transplants%>%
+                         filter(flowering_22==1&tot_fl_bodies>0),
+                       family="binomial")
+summary(mod_frset_22b)
+``` 
+
+#### Predictions
+
+```{r}
+plot(ggpredict(mod_frset_22a,terms=c("temp[all]")),add.data=T)
+plot(ggpredict(mod_frset_22a,terms=c("temp_diff[all]")),add.data=T)
+plot(ggpredict(mod_frset_22b,terms=c("temp[all]")),add.data=T)
+plot(ggpredict(mod_frset_22b,terms=c("temp_diff[all]")),add.data=T)
+plot(ggpredict(mod_frset_22b,terms=c("poll_type")))
+```
+
+#### Diagnostics
+
+```{r}
+plot(simulateResiduals(mod_frset_22a))
+plot(simulateResiduals(mod_frset_22b))
+```
+
+# Number of seeds
+
+Including only plants that produced fruits.
+
+```{r}
+hist((data_transplants%>%filter(fruiting_22==1))$n_tot_seed)
+```
+
+Does pollination type have an effect on number of flowers?
+
+```{r}
+summary(glm.nb(n_tot_seed~poll_type,
+            data_transplants%>%filter(fruiting_22==1)))
+plot(ggpredict(glm.nb(n_tot_seed~poll_type,
+            data_transplants%>%filter(fruiting_22==1))))
+```
+
+Yes! Self-pollinated have a higher number of seeds than cross-pollinated (WHY??).
+
+Include in the model as random (but only 2 levels!) or fixed:
+
+Model including plot as random, and poll_type as random:
+
+```{r}
+mod_nseed_22a<-glmmTMB(n_tot_seed~temp+temp_diff+(1|plot)+(1|poll_type),
+                     data_transplants%>%filter(fruiting_22==1),
+                     family="nbinom2") # Poisson was overdispersed
+summary(mod_nseed_22a)
+``` 
+
+ Model including plot as random, and poll_type as fixed:
+
+```{r}
+mod_nseed_22b<-glmmTMB(n_tot_seed~temp+temp_diff+poll_type+(1|plot),
+                     data_transplants%>%filter(fruiting_22==1),
+                     family="nbinom2") # Poisson was overdispersed
+summary(mod_nseed_22b)
+``` 
+
+### Predictions
+
+```{r}
+plot(ggpredict(mod_nseed_22a,terms=c("temp[all]")),add.data=T)
+plot(ggpredict(mod_nseed_22b,terms=c("temp[all]")),add.data=T)
+plot(ggpredict(mod_nseed_22b,terms=c("poll_type")))
+```
+
+### Diagnostics
+
+```{r}
+plot(simulateResiduals(mod_nseed_22a))
+plot(simulateResiduals(mod_nseed_22b))
+testDispersion(simulateResiduals(mod_nseed_22a),alternative="greater")
+testDispersion(simulateResiduals(mod_nseed_22b),alternative="greater")
+```
+
+# Seeds per flower
+
+```{r}
+data_transplants<-data_transplants%>%
+  mutate(n_seeds_per_fl_22=ifelse(fruiting_22==0,NA,
+                                  n_tot_seed/tot_fl_bodies_corr))
+hist(data_transplants$n_seeds_per_fl_22)
+```
+
+Does pollination type have an effect on number of seeds per flower?
+
+```{r}
+summary(glm.nb(n_seeds_per_fl_22~poll_type,
+            data_transplants%>%filter(flowering_22==1&tot_fl_bodies>0)))
+plot(ggpredict(glm.nb(n_seeds_per_fl_22~poll_type,
+            data_transplants%>%filter(flowering_22==1&tot_fl_bodies>0))))
+```
+
+Yes! Self-pollinated have a higher number of seeds per flower than cross-pollinated (WHY??).
+
+Include in the model as random (but only 2 levels!) or fixed:
+
+Model including plot as random, and poll_type as random:
+
+```{r}
+mod_seedsperfl_22a<-glmmTMB(n_seeds_per_fl_22~temp+temp_diff+(1|plot)+
+                              (1|poll_type),
+                     data_transplants%>%filter(flowering_22==1&tot_fl_bodies>0),
+                     family="nbinom2") # Poisson was overdispersed
+summary(mod_seedsperfl_22a)
+``` 
+
+ Model including plot as random, and poll_type as fixed:
+
+```{r}
+mod_seedsperfl_22b<-glmmTMB(n_seeds_per_fl_22~temp+temp_diff+poll_type+(1|plot),
+                     data_transplants%>%filter(flowering_22==1&tot_fl_bodies>0),
+                     family="nbinom2") # Poisson was overdispersed
+summary(mod_seedsperfl_22b)
+``` 
+
+### Predictions
+
+```{r}
+plot(ggpredict(mod_seedsperfl_22a,terms=c("temp[all]")),add.data=T)
+plot(ggpredict(mod_seedsperfl_22b,terms=c("temp[all]")),add.data=T)
+plot(ggpredict(mod_seedsperfl_22b,terms=c("poll_type")))
+```
+
+### Diagnostics
+
+```{r}
+plot(simulateResiduals(mod_seedsperfl_22a))
+plot(simulateResiduals(mod_seedsperfl_22b))
+testDispersion(simulateResiduals(mod_seedsperfl_22a),alternative="greater")
+testDispersion(simulateResiduals(mod_seedsperfl_22b),alternative="greater")
+```
+
+# Session info
+
+```{r}
+sessionInfo()
+```

@@ -25,6 +25,7 @@ library(tidyverse)
 library(readxl)
 library(RColorBrewer)
 library(knitr)
+library(janitor)
 ```
 
 ```{r Define ggplot themes and palettes, include=FALSE}
@@ -52,11 +53,32 @@ data_mothers_fathers<-read_excel("C:/Users/alici/Dropbox/SU/Projects/cerastium_g
                        sheet="extracted_data_mothers_fathers")
 ```
 
-Phenology data from transplants
+Phenology data from transplants (2022)
 
 ```{r}
-data_phen_transplants<-read_excel("data/edited/Hengill_2022_Final.02_AV.xlsx", 
+data_phen_transplants_22<-read_excel("data/edited/Hengill_2022_Final.02_AV.xlsx", 
                        sheet="extracted_data_phen")
+```
+
+Phenology data from transplants (2023)
+
+```{r}
+data_phen_transplants_23<-read_excel("data/edited/cerastium_transplants_2023.xlsx", 
+                       sheet="extracted_data_phen")
+```
+
+Peak data from transplants (2022)
+
+```{r}
+data_peak_transplants_22<-read_excel("data/edited/Hengill_2022_Final.02_AV.xlsx", 
+                       sheet="extracted_data_peak")
+```
+
+Peak data from transplants (2023)
+
+```{r}
+data_peak_transplants_23<-read_excel("data/edited/cerastium_transplants_2023.xlsx", 
+                       sheet="extracted_data_peak")
 ```
 
 # IDs for matching with data from transplants
@@ -82,86 +104,100 @@ Fix some that are not correct
 
 ```{r}
 data_mothers_fathers<-data_mothers_fathers%>%
-  mutate(original_id_numeric_fixed=ifelse(original_id_numeric=="HC2","871",original_id_numeric))%>%
-  mutate(original_id_numeric_fixed=ifelse(original_id_numeric=="24/","24",original_id_numeric_fixed))%>%
-  mutate(original_id_numeric_fixed=ifelse(original_id_numeric=="7:3","7",original_id_numeric_fixed))%>%
-  mutate(original_id_numeric_fixed=ifelse(original_id_numeric=="63:","63",original_id_numeric_fixed))%>%
-  mutate(original_id_numeric_fixed=ifelse(original_id_numeric=="48:","48",original_id_numeric_fixed))%>%
-  mutate(original_id_numeric_fixed=ifelse(original_id_numeric=="1:1","1",original_id_numeric_fixed))%>%
-  mutate(original_id_numeric_fixed=ifelse(original_id_numeric=="1:3","1",original_id_numeric_fixed))%>%
-  mutate(original_id_numeric_fixed=ifelse(original_id_numeric=="53:","53",original_id_numeric_fixed))%>%
-  mutate(original_id_numeric_fixed=ifelse(original_id_numeric=="99:","99",original_id_numeric_fixed))%>%
-  mutate(original_id_numeric_fixed=ifelse(original_id_numeric=="92:","92",original_id_numeric_fixed))%>%
-  mutate(original_id_numeric_fixed=ifelse(original_id_numeric=="110","1100",original_id_numeric_fixed))%>%
-  mutate(original_id_numeric_fixed=ifelse(original_id_numeric=="114","1149",original_id_numeric_fixed))
+  mutate(original_id_numeric_fixed=ifelse(original_id_numeric=="HC2","871",
+                                          original_id_numeric))%>%
+  mutate(original_id_numeric_fixed=ifelse(original_id_numeric=="24/","24",
+                                          original_id_numeric_fixed))%>%
+  mutate(original_id_numeric_fixed=ifelse(original_id_numeric=="7:3","7",
+                                          original_id_numeric_fixed))%>%
+  mutate(original_id_numeric_fixed=ifelse(original_id_numeric=="63:","63",
+                                          original_id_numeric_fixed))%>%
+  mutate(original_id_numeric_fixed=ifelse(original_id_numeric=="48:","48",
+                                          original_id_numeric_fixed))%>%
+  mutate(original_id_numeric_fixed=ifelse(original_id_numeric=="1:1","1",
+                                          original_id_numeric_fixed))%>%
+  mutate(original_id_numeric_fixed=ifelse(original_id_numeric=="1:3","1",
+                                          original_id_numeric_fixed))%>%
+  mutate(original_id_numeric_fixed=ifelse(original_id_numeric=="53:","53",
+                                          original_id_numeric_fixed))%>%
+  mutate(original_id_numeric_fixed=ifelse(original_id_numeric=="99:","99",
+                                          original_id_numeric_fixed))%>%
+  mutate(original_id_numeric_fixed=ifelse(original_id_numeric=="92:","92",
+                                          original_id_numeric_fixed))%>%
+  mutate(original_id_numeric_fixed=ifelse(original_id_numeric=="110","1100",
+                                          original_id_numeric_fixed))%>%
+  mutate(original_id_numeric_fixed=ifelse(original_id_numeric=="114","1149",
+                                          original_id_numeric_fixed))
 ```
 
 Create new tibble with ids and temp
 
 ```{r}
 data_temp_parents<-data_mothers_fathers%>%
-  select(original_id_Iceland,new_id_malin,original_id_numeric_fixed,temp)
+  dplyr::select(original_id_Iceland,new_id_malin,original_id_numeric_fixed,temp)
 ```
 
 This tibble will be used to merge with transplant data, in order to get to know the temperature of the parents.
 Merge based on new_id_malin for the crosspollinated plants, and on original_id_numeric_fixed for the selfpollinated plants.
 
-# Phenology data prep
+# 2022
 
-## Change mother noted as "M3"
+## Phenology data prep
+
+### Change mother noted as "M3"
 
 There is one mother noted as M3. This should be M3 in group 1 = H04 409:3/3.
 So I change this mother to 409.
 
 ```{r}
-data_phen_transplants<-data_phen_transplants%>%
+data_phen_transplants_22<-data_phen_transplants_22%>%
   mutate(mother=ifelse(mother=="M3",409,mother))
 ```
 
-## Change column types
+### Change column types
 
 ```{r}
-data_phen_transplants<-data_phen_transplants%>%
+data_phen_transplants_22<-data_phen_transplants_22%>%
   mutate_at(c("heat_zone","group","mother","father","id","repl","plot",
               "peak","fruit_coll","poll_type"),as.factor)%>%
   mutate_at(c("y","temp1","temp2","temp3"),as.numeric)%>%
   mutate_at(c("n_shoots"),as.integer)
 ```
 
-## Create unique ids
+### Create unique ids
 
 ```{r}
-data_phen_transplants<-data_phen_transplants%>%
+data_phen_transplants_22<-data_phen_transplants_22%>%
   mutate(unique_id=paste(heat_zone,id,repl,sep="_")) 
 ```
 
-## Correct one error in stage
+### Correct one error in stage
 
 ```{r}
-data_phen_transplants<-data_phen_transplants%>%
+data_phen_transplants_22<-data_phen_transplants_22%>%
   mutate(stage2=ifelse(unique_id=="Hot_138_a"&stage2=="B3","W",stage2))
 ```
 
-## Calculate temperature
+### Calculate temperature
 
 Use temp1 and temp3. There are 509 cases where both temps are available:
 
 ```{r}
-nrow(data_phen_transplants%>%filter(!is.na(temp1)&!is.na(temp3)))
+nrow(data_phen_transplants_22%>%filter(!is.na(temp1)&!is.na(temp3)))
 ```
 
 Regression of temp3 on temp1 (and viceversa) using these 509 cases:
 
 ```{r}
 model_temp3<-lm(temp3~temp1,
-           data_phen_transplants%>%filter(!is.na(temp1)&!is.na(temp3)))
+           data_phen_transplants_22%>%filter(!is.na(temp1)&!is.na(temp3)))
 summary(model_temp3)
 model_temp1<-lm(temp1~temp3,
-           data_phen_transplants%>%filter(!is.na(temp1)&!is.na(temp3)))
+           data_phen_transplants_22%>%filter(!is.na(temp1)&!is.na(temp3)))
 summary(model_temp1)
-data_phen_transplants%>%filter(!is.na(temp1)&!is.na(temp3))%>%
+data_phen_transplants_22%>%filter(!is.na(temp1)&!is.na(temp3))%>%
   ggplot(aes(x=temp1,y=temp3))+geom_point()+geom_smooth(method="lm")
-data_phen_transplants%>%filter(!is.na(temp1)&!is.na(temp3))%>%
+data_phen_transplants_22%>%filter(!is.na(temp1)&!is.na(temp3))%>%
   ggplot(aes(x=temp3,y=temp1))+geom_point()+geom_smooth(method="lm")
 ```
 
@@ -169,35 +205,35 @@ Use this regression to impute missing values of temp1 and temp3:
 
 ```{r}
 # Create new columns for imputed values
-data_phen_transplants$temp1_imp <- data_phen_transplants$temp1
-data_phen_transplants$temp3_imp <- data_phen_transplants$temp3
+data_phen_transplants_22$temp1_imp <- data_phen_transplants_22$temp1
+data_phen_transplants_22$temp3_imp <- data_phen_transplants_22$temp3
 
 # Identify rows with missing values in temp1
-missing_temp1_rows <- is.na(data_phen_transplants$temp1)
+missing_temp1_rows <- is.na(data_phen_transplants_22$temp1)
 
 # Predict temp1 values using the regression model and update temp1_imp
-data_phen_transplants$temp1_imp[missing_temp1_rows] <-
-  predict(model_temp1, newdata = data_phen_transplants[missing_temp1_rows, ])
+data_phen_transplants_22$temp1_imp[missing_temp1_rows] <-
+  predict(model_temp1, newdata = data_phen_transplants_22[missing_temp1_rows, ])
 
 # Identify rows with missing values in temp3
-missing_temp3_rows <- is.na(data_phen_transplants$temp3)
+missing_temp3_rows <- is.na(data_phen_transplants_22$temp3)
 
 # Predict temp3 values using the regression model and update temp3_imp
-data_phen_transplants$temp3_imp[missing_temp3_rows] <- 
-  predict(model_temp3, newdata = data_phen_transplants[missing_temp3_rows, ])
+data_phen_transplants_22$temp3_imp[missing_temp3_rows] <- 
+  predict(model_temp3, newdata = data_phen_transplants_22[missing_temp3_rows, ])
 
-# Now, data_phen_transplants$temp1_imp and data_phen_transplants$temp3_imp 
+# Now, data_phen_transplants_22$temp1_imp and data_phen_transplants_22$temp3_imp 
 # have imputed values while preserving original values
 ```
 
 Calculate temperature as the mean of temp1_imp and temp3_imp. this was done in 852 out of 858 cases where these both temp1_imp and temp3_imp are available. Of the 6 remaining cases, 4 have all three temperature values missing, and in 2 only temp 2 is available. 
 
 ```{r}
-data_phen_transplants<-data_phen_transplants%>%
+data_phen_transplants_22<-data_phen_transplants_22%>%
   mutate(temp=(temp1_imp+temp3_imp)/2)
 ```
 
-## Convert to long format and divide stage into real stage + grazing
+### Convert to long format and divide stage into real stage + grazing
 
 "stage" column contains info on stage:
 
@@ -225,46 +261,46 @@ Separate info from "stage" column into "stage" and "graz" columns.
 Remove plants that did not flower (where there is no record with stages F or F100 or W or W100). 
 
 ```{r}
-data_phen_transplants_long<-full_join(
-  data_phen_transplants%>%
+data_phen_transplants_22_long<-full_join(
+  data_phen_transplants_22%>%
     pivot_longer(cols=starts_with("week"),names_to="revision",
                  names_prefix="week",values_to="date")%>%
-    select(unique_id,revision,date),
-  data_phen_transplants%>%
+    dplyr::select(unique_id,revision,date),
+  data_phen_transplants_22%>%
     pivot_longer(cols=starts_with("stage"),names_to="revision",
                  names_prefix="stage",values_to="stage")%>%
-    select(unique_id,plot,revision,stage))%>%
+    dplyr::select(unique_id,plot,revision,stage))%>%
   separate(stage,into=c("stage","graz"),sep="/")
 
-nrow(data_phen_transplants_long%>%distinct(unique_id)) # 858 ids
+nrow(data_phen_transplants_22_long%>%distinct(unique_id)) # 858 ids
 
 
-data_phen_transplants_long$graz <- with(data_phen_transplants_long,
+data_phen_transplants_22_long$graz <- with(data_phen_transplants_22_long,
                           ifelse(stage %in% c("X","G","D","SG","A"),
                             stage,graz)) # Info that should be on "graz" column
-data_phen_transplants_long$stage  <- with(data_phen_transplants_long,
+data_phen_transplants_22_long$stage  <- with(data_phen_transplants_22_long,
                           ifelse(stage %in% c("X","G","D","SG","A"),
                             NA,stage))
 
-unique(data_phen_transplants_long$graz) # Correct
-unique(data_phen_transplants_long$stage) # Correct
+unique(data_phen_transplants_22_long$graz) # Correct
+unique(data_phen_transplants_22_long$stage) # Correct
 
-ids_fl <- filter(data_phen_transplants_long, 
+ids_fl_22 <- filter(data_phen_transplants_22_long, 
                  stage %in% c("F","F100","W","W100"))%>%
   distinct(unique_id) 
-nrow(ids_fl) # 603 ids that flowered
+nrow(ids_fl_22) # 603 ids that flowered
   
-data_phen_transplants_long <- data_phen_transplants_long %>%
-  filter(unique_id %in% as.vector(ids_fl$unique_id))
+data_phen_transplants_22_long <- data_phen_transplants_22_long %>%
+  filter(unique_id %in% as.vector(ids_fl_22$unique_id))
 
-length(unique(data_phen_transplants_long$unique_id)) 
+length(unique(data_phen_transplants_22_long$unique_id)) 
 # Now including only the 603 ids that flowered
 ```
 
-## Create column for vegetative / flowering / wilted
+### Create column for vegetative / flowering / wilted
 
 ```{r}
-data_phen_transplants_long <- data_phen_transplants_long %>%
+data_phen_transplants_22_long <- data_phen_transplants_22_long %>%
   mutate(V_F=ifelse(stage %in% c("V","B1","B2","B3","B4"),"V",
                     ifelse(stage %in% c("F","F100","W","W100"),"F",NA)))%>%
   mutate(V_F_W=ifelse(stage %in% c("V","B1","B2","B3","B4"),"V",
@@ -272,13 +308,13 @@ data_phen_transplants_long <- data_phen_transplants_long %>%
                            ifelse(stage %in% c("W","W100"),"W",NA))))
 ```
 
-## Calculate FFD and LFD (mean and corrected)
+### Calculate FFD and LFD (mean and corrected)
 
 FFD: Get date for last recording with buds and first recording with flowers. Calculate FFD_meanDOY as the mean date between last recording with buds and first recording with flowers.
 
 ```{r}
 # Calculate dates when the plant was first recorded as flowering
-date_firstF  <- data_phen_transplants_long %>%
+date_firstF_22  <- data_phen_transplants_22_long %>%
   group_by(unique_id) %>%
   filter(V_F=="F") %>% # Recorded as either flowering or wilted
   filter(date==min(date,na.rm=T)) %>%
@@ -287,23 +323,23 @@ date_firstF  <- data_phen_transplants_long %>%
 
 # Calculate date when the plant was last recorded as vegetative
 # (before being recorded as flowering)
-date_lastV  <- data_phen_transplants_long %>%
+date_lastV_22  <- data_phen_transplants_22_long %>%
   group_by(unique_id) %>%
   filter(V_F=="V") %>%
-  full_join(date_firstF) %>%
+  full_join(date_firstF_22) %>%
   filter(date<=date_firstF) %>% 
   # Remove records after first record with flowers
   filter(date==max(date)) %>%
   mutate(date_lastV=date) %>%
   dplyr::select(unique_id,date_lastV)
 
-data_phen_transplants_FFD <- data_phen_transplants_long %>%
+data_phen_transplants_22_FFD <- data_phen_transplants_22_long %>%
   dplyr::select(unique_id,date,stage,V_F) %>%
   filter(!is.na(V_F)) %>%
-  left_join(date_firstF) %>%
+  left_join(date_firstF_22) %>%
   filter(date<=date_firstF) %>% 
   # Remove records after first record with flowers
-  left_join(date_lastV) %>%
+  left_join(date_lastV_22) %>%
   filter(date>=date_lastV|is.na(date_lastV)) %>%
   # Remove records before last record without flowers
   pivot_wider(id_cols=unique_id,names_from=V_F,
@@ -341,7 +377,7 @@ LFD: Get date for last recording with flowers and first recording with wilted fl
 
 ```{r}
 # Calculate dates when the plant was last recorded as flowering
-date_lastF  <- data_phen_transplants_long %>%
+date_lastF_22  <- data_phen_transplants_22_long %>%
   group_by(unique_id) %>%
   filter(V_F_W=="F") %>% # Recorded only as flowering?
   # If it was wilted on the first recording where it was not vegetative, 
@@ -352,10 +388,10 @@ date_lastF  <- data_phen_transplants_long %>%
 
 # Calculate date when the plant was first recorded as wilted flower
 # (after last record with flowers)
-date_firstW  <- data_phen_transplants_long %>%
+date_firstW_22  <- data_phen_transplants_22_long %>%
   group_by(unique_id) %>%
   filter(V_F_W=="W") %>%
-  full_join(date_lastF) %>%
+  full_join(date_lastF_22) %>%
   filter(date>=date_lastF) %>% 
   # Remove records before last record with flowers
   # and those where date_lastF=NA
@@ -363,14 +399,14 @@ date_firstW  <- data_phen_transplants_long %>%
   mutate(date_firstW=date) %>%
   dplyr::select(unique_id,date_firstW)
 
-data_phen_transplants_LFD <- data_phen_transplants_long %>%
+data_phen_transplants_22_LFD <- data_phen_transplants_22_long %>%
   dplyr::select(unique_id,date,stage,V_F_W) %>%
   filter(!is.na(V_F_W)) %>%
-  left_join(date_firstW) %>%
+  left_join(date_firstW_22) %>%
   filter(date<=date_firstW|is.na(date_firstW)) %>% 
   # Remove records after first record with wilted flowers
   # 1 with date_firstW=NA
-  left_join(date_lastF) %>%
+  left_join(date_lastF_22) %>%
   filter(date>=date_lastF) %>%
   # Remove records before last record with flowers
   pivot_wider(id_cols=unique_id,names_from=V_F_W,
@@ -403,20 +439,20 @@ data_phen_transplants_LFD <- data_phen_transplants_long %>%
 # Calculate corrected LFD: LFD_meanDOY + both terms
 ```
 
-# Create datafile
+## Create datafile
 
 ```{r}
-data_transplants<-full_join(
-  data_phen_transplants%>%select(unique_id,heat_zone,group,mother,father,id,
+data_transplants_22<-full_join(
+  data_phen_transplants_22%>%dplyr::select(unique_id,heat_zone,group,mother,father,id,
                                  repl,plot,x,y,peak,fruit_coll,comments1,
                                  comments2,poll_type,date_planted,temp),
-  data_phen_transplants_FFD%>%select(unique_id,FFD_corr)
+  data_phen_transplants_22_FFD%>%dplyr::select(unique_id,FFD_corr)
   ) 
 # Full join, will assign NA to plants that did not flower 
 # (i.e. do not have a FFD_corr)
-data_transplants<-full_join(data_transplants,
-                            data_phen_transplants_LFD%>%
-                              select(unique_id,LFD_corr))%>%
+data_transplants_22<-full_join(data_transplants_22,
+                            data_phen_transplants_22_LFD%>%
+                              dplyr::select(unique_id,LFD_corr))%>%
   mutate(MeanFD=(FFD_corr+LFD_corr)/2)
 # Calculate MEAN (not median) flowering date, as the mean of FFD and LFD
 ```
@@ -424,11 +460,12 @@ data_transplants<-full_join(data_transplants,
 How many non-missing values?
 
 ```{r}
-nrow(data_transplants%>%filter(!is.na(FFD_corr)))
-nrow(data_transplants%>%filter(!is.na(LFD_corr)))
-nrow(data_transplants%>%filter(!is.na(MeanFD)))
+nrow(data_transplants_22%>%filter(!is.na(FFD_corr)))
+nrow(data_transplants_22%>%filter(!is.na(LFD_corr)))
+nrow(data_transplants_22%>%filter(!is.na(MeanFD)))
 ```
-# Merge with temp parents
+
+## Merge with temp parents
 
 This tibble will be used to merge with transplant data, in order to get to know the temperature of the parents.
 Merge based on new_id_malin for the crosspollinated plants, and on original_id_numeric_fixed for the selfpollinated plants.
@@ -447,32 +484,32 @@ data_temp_fathers<-data_temp_parents%>%
 ```
 
 ```{r}
-data_transplants<-rbind(
+data_transplants_22<-rbind(
   # Crosspollinated
-  data_transplants%>%filter(poll_type=="Crosspollinated")%>%
+  data_transplants_22%>%filter(poll_type=="Crosspollinated")%>%
   left_join(data_temp_mothers%>%
-              select(new_id_malin,temp_mother),
+              dplyr::select(new_id_malin,temp_mother),
             join_by(mother == new_id_malin),
             multiple="first")%>% 
   # Because sometimes there are two records of the same mother/father,
   # but their temperature is the same
   left_join(data_temp_fathers%>%
-              select(new_id_malin,temp_father),
+              dplyr::select(new_id_malin,temp_father),
             join_by(father == new_id_malin),
             multiple="first"),
   # Selfpollinated
-  data_transplants%>%filter(poll_type=="Selfpollinated")%>%
+  data_transplants_22%>%filter(poll_type=="Selfpollinated")%>%
   left_join(data_temp_mothers%>%
-              select(original_id_numeric_fixed,temp_mother),
+              dplyr::select(original_id_numeric_fixed,temp_mother),
             join_by(mother == original_id_numeric_fixed),
             multiple="first")%>%
   left_join(data_temp_fathers%>%
-              select(original_id_numeric_fixed,temp_father),
+              dplyr::select(original_id_numeric_fixed,temp_father),
             join_by(father == original_id_numeric_fixed),
             multiple="first") 
 )
 
-data_transplants<-data_transplants%>%
+data_transplants_22<-data_transplants_22%>%
   mutate(mother=as.character(mother),father=as.character(father))%>%
   mutate(father=ifelse(poll_type=="Selfpollinated",mother,father))%>%
   mutate(mother=as.factor(mother),father=as.factor(father))%>%
@@ -481,11 +518,542 @@ data_transplants<-data_transplants%>%
   mutate(crossing=paste(mother,father,sep="_"))
 ```
 
-# TO DO: Add info on peak
+## Peak data prep
 
-# TO DO: add info on shoot growth
+```{r}
+data_transplants_22<-data_transplants_22%>%
+  mutate(peak=factor(ifelse(peak=="P",1,0)),
+         fruit_coll=factor(ifelse(fruit_coll=="X",1,0)))
+```
 
-# Save clean data as .csv
+```{r}
+data_peak_transplants_22<-data_peak_transplants_22%>%
+  mutate_at(c("heat_zone","group","mother","father","id","repl","plot"),
+            as.factor)%>%
+  mutate(F_NF_A=factor(ifelse(F_NF_A=="-",NA,F_NF_A)),
+         date_peak=convert_to_date(date))%>% 
+  dplyr::select(-date)%>%
+  mutate_at(c("n_fl_stems","n_opened_fl","n_closed_buds","tot_fl_bodies",
+              "n_stems_grazed","n_closed_coll_fr","n_open_coll_fr","n_count_fr",
+              "n_tot_fr","n_seed_fr1","n_seed_fr2","n_seed_fr3","n_seed_fr4",
+              "rest_combined","n_tot_seed"),as.integer)%>%
+  mutate_at(c("median_h","per_invert_herb","mean_seed_per_fr"),as.numeric)%>%
+  rename(comments_peak=comments)%>%
+  mutate(date_first_ripe_fruit=convert_to_date(date_first_ripe_fruit),
+         date_count_fr=convert_to_date(date_count_fr))%>%
+  mutate(unique_id=paste(heat_zone,id,repl,sep="_")) 
+```
+
+Histograms for dates:
+
+```{r}
+ggplot(data_peak_transplants_22,aes(x=date_peak))+geom_histogram()
+# One date in Feb 22, must be wrong! Needs to be changed if used in analyses
+ggplot(data_peak_transplants_22,aes(x=date_first_ripe_fruit))+geom_histogram()
+ggplot(data_peak_transplants_22,aes(date_count_fr))+geom_histogram()
+```
+
+## Join peak data
+
+```{r}
+data_transplants_22<-data_transplants_22%>%
+  full_join(data_peak_transplants_22%>%
+              dplyr::select(-heat_zone,-group,-mother,-father,-id,-repl,-plot),
+            by=join_by(unique_id))
+```
+
+## Peak checks
+
+```{r}
+nrow(filter(data_transplants_22,peak==0&!is.na(date_peak)))
+nrow(filter(data_transplants_22,peak==1&is.na(date_peak)))
+nrow(filter(filter(data_transplants_22,fruit_coll==0),
+            !is.na(n_closed_coll_fr)|!is.na(n_open_coll_fr)))
+nrow(filter(filter(data_transplants_22,fruit_coll==1),
+            is.na(n_closed_coll_fr)&is.na(n_open_coll_fr)))
+nrow(filter(filter(data_transplants_22,fruit_coll==1),
+            is.na(n_tot_seed)))
+```
+
+## TO DO: add info on shoot growth
+
+```{r}
+# Contained in data_phen_transplants_22
+```
+
+## Calculate relative fitness and standardized traits
+
+```{r}
+data_transplants_22<-data_transplants_22%>%
+  mutate(fitness_rel=n_tot_seed/mean(n_tot_seed,na.rm=T),
+         FFD_std=as.numeric(scale(FFD_corr)),
+         LFD_std=as.numeric(scale(LFD_corr)),
+         MeanFD_std=as.numeric(scale(MeanFD)),
+         median_h_std=as.numeric(scale(median_h)),
+         tot_fl_bodies_corr=ifelse(n_tot_fr>tot_fl_bodies,n_tot_fr,
+                                   tot_fl_bodies),
+         tot_fl_bodies_corr_log=ifelse(tot_fl_bodies==0,0,
+                                       log(tot_fl_bodies_corr)),
+         n_fl_std=ifelse(tot_fl_bodies==0,0,
+                         as.numeric(scale(tot_fl_bodies_corr_log))))
+# Correct tot_fl_bodies to tot_fl_bodies_corr, to be at least as high as n_tot_fr
+```
+
+## Save clean data as .csv
+
+```{r}
+write_csv(data_transplants_22,"data/clean/data_transplants_22.csv")
+```
+
+# 2023
+
+## Phenology data prep
+
+### Change column types
+
+```{r}
+data_phen_transplants_23<-data_phen_transplants_23%>%
+  mutate_at(c("heat_zone","group","mother","father","id","repl","plot",
+              "peak","fruit_coll","poll_type"),as.factor)%>%
+  mutate_at(c("y","temp1","temp2","temp3"),as.numeric)
+```
+
+### Create unique ids
+
+```{r}
+data_phen_transplants_23<-data_phen_transplants_23%>%
+  mutate(unique_id=paste(heat_zone,id,repl,sep="_")) 
+```
+
+### Calculate temperature
+
+Use temp1 and temp3. There are 837 cases where both temps are available:
+
+```{r}
+nrow(data_phen_transplants_23%>%filter(!is.na(temp1)&!is.na(temp3)))
+```
+
+There are 836 cases when all three temps are available, but so far we will use temp1 and temp3 to do it in a similar way as in 2022.
+
+```{r}
+nrow(data_phen_transplants_23%>%
+       filter(!is.na(temp1)&!is.na(temp2)&!is.na(temp3)))
+```
+
+There are 10 cases where temp1 is missing and temp3 is available
+
+```{r}
+nrow(data_phen_transplants_23%>%filter(!is.na(temp1)&is.na(temp3)))
+```
+
+There are no cases where temp1 is available and temp3 is missing
+
+```{r}
+nrow(data_phen_transplants_23%>%filter(is.na(temp1)&!is.na(temp3)))
+```
+
+Regression of temp3 on temp1 (and viceversa) using the 837 cases where both are available:
+
+```{r}
+model_temp1_23<-lm(temp1~temp3,
+           data_phen_transplants_23%>%filter(!is.na(temp1)&!is.na(temp3)))
+summary(model_temp1_23)
+data_phen_transplants_23%>%filter(!is.na(temp1)&!is.na(temp3))%>%
+  ggplot(aes(x=temp3,y=temp1))+geom_point()+geom_smooth(method="lm")
+```
+
+Use this regression to impute missing values of temp1:
+
+```{r}
+# Create new column for imputed values
+data_phen_transplants_23$temp1_imp <- data_phen_transplants_23$temp1
+
+# Identify rows with missing values in temp1
+missing_temp1_rows_23 <- is.na(data_phen_transplants_23$temp1)
+
+# Predict temp1 values using the regression model and update temp1_imp
+data_phen_transplants_23$temp1_imp[missing_temp1_rows_23] <-
+  predict(model_temp1_23, newdata = data_phen_transplants_23[missing_temp1_rows_23, ])
+
+# Now, data_phen_transplants_23$temp1_imp has imputed values
+# while preserving original values
+```
+
+Calculate temperature as the mean of temp1_imp and temp3_imp. this was done in 837 out of 858 cases where these both temp1_imp and temp3 are available.
+
+```{r}
+data_phen_transplants_23<-data_phen_transplants_23%>%
+  mutate(temp=(temp1_imp+temp3)/2)
+```
+
+### Convert to long format and divide stage into real stage + grazing
+
+"stage" column contains info on stage:
+
+- V (Vegetative)	Only vegetative growth
+- B1 (Bud stage 1)	Buds are just starting to form, very small
+- B2 (Bud stage 2)	Buds are at medium size 
+- B3 (Bud stage 3)	Buds are large but still completely closed
+- B4 (Bud stage 4)	Buds are large and almost starting to flower
+- F (Flowering)	At least one flower has opened
+- F100 (100% flowering)	All flowers have opened, none are yet wilted
+- W (Wilted)	At least one flower has wilted
+- W100 (100% wilted)	All flowers are wilted
+
+But also on grazing / lost and dead plants:
+
+- X (Lost)	Neither plant nor nail was not found that day
+- D (Dead)	Plant still in place but dead
+- G (Grazed/gone)	Nail was found but no sign of plant
+- SG (All stems grazed/gone)	All stems grazed/gone but with visible stubs
+- /SG (Stem(s) grazed/gone from plant)	One or more stems have been grazed but there are still some left, phenology is measured for the one that is most mature
+- A (Aborted)	All flowerbuds have stopped development, none have nor will open
+
+Separate info from "stage" column into "stage" and "graz" columns. 
+
+Remove plants that did not flower (where there is no record with stages F or F100 or W or W100). 
+
+```{r}
+data_phen_transplants_23_long<-full_join(
+  data_phen_transplants_23%>%
+    pivot_longer(cols=starts_with("week"),names_to="revision",
+                 names_prefix="week",values_to="date")%>%
+    dplyr::select(unique_id,revision,date),
+  data_phen_transplants_23%>%
+    pivot_longer(cols=starts_with("stage"),names_to="revision",
+                 names_prefix="stage",values_to="stage")%>%
+    dplyr::select(unique_id,plot,revision,stage))%>%
+  separate(stage,into=c("stage","graz"),sep="/")
+
+nrow(data_phen_transplants_23_long%>%distinct(unique_id)) # 858 ids
+
+
+data_phen_transplants_23_long$graz <- with(data_phen_transplants_23_long,
+                          ifelse(stage %in% c("X","G","D","SG","A"),
+                            stage,graz)) # Info that should be on "graz" column
+data_phen_transplants_23_long$stage  <- with(data_phen_transplants_23_long,
+                          ifelse(stage %in% c("X","G","D","SG","A"),
+                            NA,stage))
+
+unique(data_phen_transplants_23_long$graz) # Correct
+unique(data_phen_transplants_23_long$stage) # Correct
+
+ids_fl_23 <- filter(data_phen_transplants_23_long, 
+                 stage %in% c("F","F100","W","W100"))%>%
+  distinct(unique_id) 
+nrow(ids_fl_23) # 414 ids that flowered
+  
+data_phen_transplants_23_long <- data_phen_transplants_23_long %>%
+  filter(unique_id %in% as.vector(ids_fl_23$unique_id))
+
+length(unique(data_phen_transplants_23_long$unique_id)) 
+# Now including only the 414 ids that flowered
+```
+
+### Create column for vegetative / flowering / wilted
+
+```{r}
+data_phen_transplants_23_long <- data_phen_transplants_23_long %>%
+  mutate(V_F=ifelse(stage %in% c("V","B1","B2","B3","B4"),"V",
+                    ifelse(stage %in% c("F","F100","W","W100"),"F",NA)))%>%
+  mutate(V_F_W=ifelse(stage %in% c("V","B1","B2","B3","B4"),"V",
+                    ifelse(stage %in% c("F","F100"),"F",
+                           ifelse(stage %in% c("W","W100"),"W",NA))))
+```
+
+### Calculate FFD and LFD (mean and corrected)
+
+FFD: Get date for last recording with buds and first recording with flowers. Calculate FFD_meanDOY as the mean date between last recording with buds and first recording with flowers.
+
+```{r}
+# Calculate dates when the plant was first recorded as flowering
+date_firstF_23  <- data_phen_transplants_23_long %>%
+  group_by(unique_id) %>%
+  filter(V_F=="F") %>% # Recorded as either flowering or wilted
+  filter(date==min(date,na.rm=T)) %>%
+  mutate(date_firstF=date) %>%
+  dplyr::select(unique_id,date_firstF)
+
+# Calculate date when the plant was last recorded as vegetative
+# (before being recorded as flowering)
+date_lastV_23  <- data_phen_transplants_23_long %>%
+  group_by(unique_id) %>%
+  filter(V_F=="V") %>%
+  full_join(date_firstF_23) %>%
+  filter(date<=date_firstF) %>% 
+  # Remove records after first record with flowers
+  filter(date==max(date)) %>%
+  mutate(date_lastV=date) %>%
+  dplyr::select(unique_id,date_lastV)
+
+data_phen_transplants_23_FFD <- data_phen_transplants_23_long %>%
+  dplyr::select(unique_id,date,stage,V_F) %>%
+  filter(!is.na(V_F)) %>%
+  left_join(date_firstF_23) %>%
+  filter(date<=date_firstF) %>% 
+  # Remove records after first record with flowers
+  left_join(date_lastV_23) %>%
+  filter(date>=date_lastV|is.na(date_lastV)) %>%
+  # Remove records before last record without flowers
+  pivot_wider(id_cols=unique_id,names_from=V_F,
+              values_from=c(stage,date_firstF,date_lastV)) %>%
+  dplyr::select(unique_id,stage_V,stage_F,date_firstF_F,date_lastV_V) %>%
+  rename(date_firstF=date_firstF_F,date_lastV=date_lastV_V) %>%
+  ungroup() %>%
+  arrange(unique_id) %>%
+  mutate(date_firstF=yday(date_firstF),date_lastV=yday(date_lastV)) %>%
+  # Change to julian dates
+  mutate(FFD_meanDOY=ifelse(is.na(date_lastV),date_firstF-3.445, 
+                            # Calculate first estimate of FFD:
+                            # For those flowering in first revision
+                            # assigned FFD as half a mean interval
+                            # date_firstF-(6.89/2)=date_firstF-3.445
+                            (date_lastV+date_firstF)/2)) %>%
+  # For others, assigned FFD_meanDOY as mean of date_lastV and date_firstF
+  mutate(interval=date_firstF-date_lastV) %>%
+  # Interval between 5 and 10 days (mean=6.89 days)
+  mutate(interval=ifelse(is.na(date_lastV),6.89,interval))%>%
+  # Assign mean interval to those flowering in first revision 
+  # (i.e. without date_lastV)
+  mutate(term_lastV=ifelse(stage_V=="V"|stage_V=="B1",0.2*interval, 
+                    ifelse(stage_V=="B2",0*interval,
+                    ifelse(stage_V=="B3"|stage_V=="B4",-0.2*interval,NA))),
+         term_firstF=ifelse(stage_F=="F"|stage_F=="F100",0.2*interval,
+                     ifelse(stage_F=="W"|stage_F=="W100",-0.2*interval,NA))) %>% 
+  # Calculate terms to add for correcting FFD
+  rowwise() %>% 
+  mutate(FFD_corr=sum(FFD_meanDOY,term_lastV,term_firstF,na.rm=T))
+  # Calculate corrected FFD: FFD_meanDOY + both terms
+```
+
+LFD: Get date for last recording with flowers and first recording with wilted flowers. Calculate LFD_meanDOY as the mean date between last recording with flowers and first recording with wilted flowers.
+
+```{r}
+# Calculate dates when the plant was last recorded as flowering
+date_lastF_23  <- data_phen_transplants_23_long %>%
+  group_by(unique_id) %>%
+  filter(V_F_W=="F") %>% # Recorded only as flowering?
+  # If it was wilted on the first recording where it was not vegetative, 
+  # we cannot calculate LFD
+  filter(date==max(date,na.rm=T)) %>%
+  mutate(date_lastF=date) %>%
+  dplyr::select(unique_id,date_lastF)
+
+# Calculate date when the plant was first recorded as wilted flower
+# (after last record with flowers)
+date_firstW_23  <- data_phen_transplants_23_long %>%
+  group_by(unique_id) %>%
+  filter(V_F_W=="W") %>%
+  full_join(date_lastF_23) %>%
+  filter(date>=date_lastF) %>% 
+  # Remove records before last record with flowers
+  # and those where date_lastF=NA
+  filter(date==min(date)) %>%
+  mutate(date_firstW=date) %>%
+  dplyr::select(unique_id,date_firstW)
+
+data_phen_transplants_23_LFD <- data_phen_transplants_23_long %>%
+  dplyr::select(unique_id,date,stage,V_F_W) %>%
+  filter(!is.na(V_F_W)) %>%
+  left_join(date_firstW_23) %>%
+  filter(date<=date_firstW|is.na(date_firstW)) %>% 
+  # Remove records after first record with wilted flowers
+  # 1 with date_firstW=NA
+  left_join(date_lastF_23) %>%
+  filter(date>=date_lastF) %>%
+  # Remove records before last record with flowers
+  pivot_wider(id_cols=unique_id,names_from=V_F_W,
+              values_from=c(stage,date_firstW,date_lastF)) %>%
+  dplyr::select(unique_id,stage_F,stage_W,date_lastF_F,date_firstW_W) %>%
+  rename(date_lastF=date_lastF_F,date_firstW=date_firstW_W) %>%
+  # 1 with date_firstW=NA
+  ungroup() %>%
+  arrange(unique_id) %>%
+  mutate(date_lastF=yday(date_lastF),date_firstW=yday(date_firstW)) %>%
+  # Change to julian dates
+  mutate(LFD_meanDOY=ifelse(is.na(date_firstW),date_lastF+3.445, 
+                            # Calculate first estimate of LFD:
+                            # For one case where date_firstW is missing
+                            # assigned LFD as half a mean interval
+                            # date_lastF+(6.89/2)=date_lastF+3.445
+                            (date_lastF+date_firstW)/2)) %>%
+  # For others, assigned LFD_meanDOY as mean of date_lastF and date_firstW
+  mutate(interval=date_firstW-date_lastF) %>%
+  # Interval between 5 and 10 days (mean=6.89 days)
+  mutate(interval=ifelse(is.na(date_firstW),6.89,interval))%>%
+  # Assign mean interval to one case where date_firstW is missing
+  mutate(term_lastF=ifelse(stage_F=="F",0.2*interval,
+                           ifelse(stage_F=="F100",-0.2*interval,NA)),
+         term_firstW=ifelse(stage_W=="W",0.2*interval,
+                            ifelse(stage_W=="W100",-0.2*interval,NA)))%>% 
+  # Calculate terms to add for correcting FFD
+  rowwise() %>% 
+  mutate(LFD_corr=sum(LFD_meanDOY,term_lastF,term_firstW,na.rm=T))
+# Calculate corrected LFD: LFD_meanDOY + both terms
+```
+
+## Create datafile
+
+```{r}
+data_transplants_23<-full_join(
+  data_phen_transplants_23%>%dplyr::select(unique_id,heat_zone,group,mother,father,id,
+                                 repl,plot,x,y,peak,fruit_coll,comments,
+                                 poll_type,date_planted,temp),
+  data_phen_transplants_23_FFD%>%dplyr::select(unique_id,FFD_corr)
+  ) 
+# Full join, will assign NA to plants that did not flower 
+# (i.e. do not have a FFD_corr)
+data_transplants_23<-full_join(data_transplants_23,
+                            data_phen_transplants_23_LFD%>%
+                              dplyr::select(unique_id,LFD_corr))%>%
+  mutate(MeanFD=(FFD_corr+LFD_corr)/2)
+# Calculate MEAN (not median) flowering date, as the mean of FFD and LFD
+```
+
+How many non-missing values?
+
+```{r}
+nrow(data_transplants_23%>%filter(!is.na(FFD_corr)))
+nrow(data_transplants_23%>%filter(!is.na(LFD_corr)))
+nrow(data_transplants_23%>%filter(!is.na(MeanFD)))
+```
+
+## Merge with temp parents
+
+```{r}
+data_transplants_23<-rbind(
+  # Crosspollinated
+  data_transplants_23%>%filter(poll_type=="Crosspollinated")%>%
+  left_join(data_temp_mothers%>%
+              dplyr::select(new_id_malin,temp_mother),
+            join_by(mother == new_id_malin),
+            multiple="first")%>% 
+  # Because sometimes there are two records of the same mother/father,
+  # but their temperature is the same
+  left_join(data_temp_fathers%>%
+              dplyr::select(new_id_malin,temp_father),
+            join_by(father == new_id_malin),
+            multiple="first"),
+  # Selfpollinated
+  data_transplants_23%>%filter(poll_type=="Selfpollinated")%>%
+  left_join(data_temp_mothers%>%
+              dplyr::select(original_id_numeric_fixed,temp_mother),
+            join_by(mother == original_id_numeric_fixed),
+            multiple="first")%>%
+  left_join(data_temp_fathers%>%
+              dplyr::select(original_id_numeric_fixed,temp_father),
+            join_by(father == original_id_numeric_fixed),
+            multiple="first") 
+)
+
+data_transplants_23<-data_transplants_23%>%
+  mutate(mother=as.character(mother),father=as.character(father))%>%
+  mutate(father=ifelse(poll_type=="Selfpollinated",mother,father))%>%
+  mutate(mother=as.factor(mother),father=as.factor(father))%>%
+  mutate(temp_father=ifelse(poll_type=="Selfpollinated",temp_mother,temp_father))%>%
+  # So far, selfed progeny have father=mother, and temp_father=temp_mother
+  mutate(crossing=paste(mother,father,sep="_"))
+```
+
+## Peak data prep
+
+```{r}
+data_transplants_23<-data_transplants_23%>%
+  mutate(peak=factor(ifelse(peak=="X","1","0")),
+         fruit_coll=factor(ifelse(fruit_coll=="X",1,0)))
+```
+
+```{r}
+data_peak_transplants_23<-data_peak_transplants_23%>%
+  mutate_at(c("heat_zone","group","mother","father","id","repl","plot",
+              "F_NF_A"),as.factor)%>%
+  mutate(date_peak=date)%>% 
+  dplyr::select(-date)%>%
+  mutate_at(c("n_fl_stems","n_opened_fl","n_closed_buds","tot_fl_bodies",
+              "n_stems_grazed","n_closed_coll_fr","n_open_coll_fr","n_count_fr",
+              "n_tot_fr","n_seed_fr1","n_seed_fr2","n_seed_fr3","n_seed_fr4",
+              "rest_combined","n_tot_seed"),as.integer)%>%
+  mutate_at(c("median_h","stem_width","per_invert_herb","mean_seed_per_fr"),
+            as.numeric)%>%
+  rename(comments_peak=comments)%>%
+  mutate(unique_id=paste(heat_zone,id,repl,sep="_")) 
+```
+
+Histograms for dates:
+
+```{r}
+ggplot(data_peak_transplants_23,aes(x=date_peak))+geom_histogram()
+ggplot(data_peak_transplants_23,aes(x=date_first_ripe_fruit))+geom_histogram()
+ggplot(data_peak_transplants_23,aes(date_count_fr))+geom_histogram()
+```
+
+## Join peak data
+
+```{r}
+data_transplants_23<-data_transplants_23%>%
+  full_join(data_peak_transplants_23%>%
+              dplyr::select(-heat_zone,-group,-mother,-father,-id,-repl,-plot),
+            by=join_by(unique_id))%>%
+  mutate(peak=ifelse(is.na(peak),0,peak),
+         fruit_coll=ifelse(is.na(fruit_coll),0,fruit_coll))%>%
+  mutate(peak=ifelse(peak==0&!is.na(date_peak)&F_NF_A=="F",1,peak))%>%
+  mutate(peak=ifelse(peak==0&F_NF_A=="NF",0,peak))%>%
+  mutate(peak=factor(peak))%>%
+  mutate(date_peak=as.POSIXct(as.Date(ifelse(peak==0,NA,date_peak))))%>%
+  mutate(fruit_coll=factor(ifelse(is.na(n_closed_coll_fr)&is.na(n_open_coll_fr),
+                                  0,fruit_coll)))
+```
+
+## Peak checks
+
+```{r}
+nrow(filter(data_transplants_23,peak==0&!is.na(date_peak)))
+nrow(filter(data_transplants_23,peak==1&is.na(date_peak)))
+nrow(filter(filter(data_transplants_23,fruit_coll==0),
+            !is.na(n_closed_coll_fr)|!is.na(n_open_coll_fr)))
+nrow(filter(filter(data_transplants_23,fruit_coll==1),
+            is.na(n_closed_coll_fr)&is.na(n_open_coll_fr)))
+nrow(filter(filter(data_transplants_23,fruit_coll==1),
+            is.na(n_tot_seed)))
+```
+
+## TO DO: add info on shoot growth
+
+Shoot measurements NA for 2023? I could not find it in the Excel file I have.
+
+## Calculate relative fitness and standardized traits
+
+```{r}
+data_transplants_23<-data_transplants_23%>%
+  mutate(fitness_rel=n_tot_seed/mean(n_tot_seed,na.rm=T),
+         FFD_std=as.numeric(scale(FFD_corr)),
+         LFD_std=as.numeric(scale(LFD_corr)),
+         MeanFD_std=as.numeric(scale(MeanFD)),
+         median_h_std=as.numeric(scale(median_h)),
+         tot_fl_bodies_corr=ifelse(n_tot_fr>tot_fl_bodies,n_tot_fr,
+                                   tot_fl_bodies),
+         tot_fl_bodies_corr_log=ifelse(tot_fl_bodies==0,0,
+                                       log(tot_fl_bodies_corr)),
+         n_fl_std=ifelse(tot_fl_bodies==0,0,
+                         as.numeric(scale(tot_fl_bodies_corr_log))))
+# Correct tot_fl_bodies to tot_fl_bodies_corr, to be at least as high as n_tot_fr
+```
+
+## Save clean data as .csv
+
+```{r}
+write_csv(data_transplants_23,"data/clean/data_transplants_23.csv")
+```
+
+# Join data from 2022 and 2023
+
+```{r}
+data_transplants<-bind_rows(data_transplants_22%>%mutate(year=2022),
+                            data_transplants_23%>%mutate(year=2023))%>%
+  mutate(year=factor(year))
+```
+
+## Save clean data as .csv
 
 ```{r}
 write_csv(data_transplants,"data/clean/data_transplants.csv")
