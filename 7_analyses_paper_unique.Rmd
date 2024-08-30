@@ -144,6 +144,22 @@ hist(data_transplants$temp_diff)
 When the temperature difference is positive --> planted in warmer places than their origin
 When the temperature difference is negative --> planted in colder places than their origin
 
+# Correct errors in fruits - seeds
+
+Two cases with no fruits but seeds (n_tot_seed >0)! 
+
+```{r}
+data_transplants%>%
+  filter(n_tot_seed>0&n_tot_fr==0)
+```
+
+Modify n_tot_seed so that it is zero when n_tot_fr is zero.
+
+```{r}
+data_transplants<-data_transplants%>%
+  mutate(n_tot_seed=ifelse(n_tot_fr==0,0,n_tot_seed))
+```
+
 # Prediction 4 (from old paper 1)
 
 See if we use these analyses!
@@ -660,7 +676,7 @@ Model with quadratic term is worst. Use model without quadratic term.
 
 ```{r}
 plot(ggpredict(model_local_adapt_01_22_FFD,terms="temp_diff [all]")) #*
-plot(ggpredict(summary(model_local_adapt_01_22_FFD),terms="FFD_corr [all]")) #*
+plot(ggpredict(model_local_adapt_01_22_FFD,terms="FFD_corr [all]")) #*
 ```
 
 ##### 2023
@@ -915,6 +931,11 @@ data_transplants_23<-data_transplants%>%
   mutate(surv=ifelse(unique_id %in% not_surv_22$unique_id,NA,surv))%>%
   # Correct errors: these below are in not_surv_22,
   # but actually there is data for 2023!
+  # So surv for 2023 should be 1
+  mutate(surv=ifelse(unique_id %in% c("Hot_10_a","Hot_30_a","Hot_45_a",
+                                      "Hot_9_d","Hot_88_a","Hot_125_b"),1,surv))
+# And surv for 2022 should also be 1
+data_transplants_22<-data_transplants_22%>%
   mutate(surv=ifelse(unique_id %in% c("Hot_10_a","Hot_30_a","Hot_45_a",
                                       "Hot_9_d","Hot_88_a","Hot_125_b"),1,surv))
 data_transplants<-rbind(data_transplants_22,data_transplants_23)
@@ -922,7 +943,7 @@ with(subset(data_transplants,year==2022),table(surv))
 with(subset(data_transplants,year==2023),table(surv))
 ```
 
-Of 858 plants planted in 2021, 808 survived in 2022. Of the 808 that survived in 2022, 530 survived in 2023
+Of 858 plants planted in 2021, 814 survived in 2022. Of the 814 that survived in 2022, 530 survived in 2023
 
 ## Models
 
@@ -1048,10 +1069,12 @@ plot(simulateResiduals(mod_median_h_23_pollf))
 ```{r}
 data_transplants<-data_transplants%>%
   mutate(flowering=ifelse(F_NF_A=="F",1,ifelse(F_NF_A=="NF",0,NA)))
+data_transplants<-data_transplants%>%
+  mutate(flowering=ifelse(surv==1&is.na(F_NF_A),0,flowering))
 with(data_transplants,table(year,flowering))
 ```
  
-Of 808 plants that survived in 2022, 603 flowered and 204 did not flower (and 1 was aborted, not used here). 4 were grazed before they peaked, they are included as flowering here.
+Of 814 plants that survived in 2022, 603 flowered and 210 did not flower (and 1 was aborted, not used here). 4 were grazed before they peaked, they are included as flowering here.
 Of 530 plants that survived in 2023, 411 flowered and 119 did not flower.
 
 Does pollination type have an effect on probability of flowering?
@@ -1125,6 +1148,7 @@ grid.arrange(
     ggtitle("2023"),
 ncol=2)
 ```
+
 ## Diagnostics
 
 ```{r}
@@ -1198,8 +1222,6 @@ mod_nfl_23_pollf<-glmmTMB(tot_fl_bodies_corr~temp+temp_diff+I(temp_diff^2)+
 summary(mod_nfl_22_pollf)
 summary(mod_nfl_23_pollf)
 ``` 
-
-
 
 #### Predictions
 
@@ -1360,7 +1382,9 @@ data_transplants<-data_transplants%>%
                                 # NA for plants that aborted or did not flower
                                 ifelse(is.na(n_tot_fr),NA,
                                        # NA for plants where n_tot_fr is NA
-                                       ifelse(n_tot_fr>0,1,0))))) 
+                                       ifelse(flowering==0,NA,
+                                              # NA for plants that did not flower
+                                              ifelse(n_tot_fr>0,1,0)))))) 
 # 1/0 for plants that produced / did not produce fruits
 table(subset(data_transplants,year==2022)$fruiting)
 table(subset(data_transplants,year==2023)$fruiting)
@@ -1843,9 +1867,60 @@ tab_model(mod_surv_23,mod_median_h_23_pollf,mod_flowering_23_pollf,
           file="output/tables/summary_2023.doc")
 ```
 
-# Aster model
+# Differences in fitness components among years
 
-# HERE: check survival 22-23
+```{r warning=FALSE}
+mod_surv_years<-glm(surv~year,data_transplants,family="binomial")
+mod_median_h_years<-lm(median_h~year,data_transplants)
+mod_flowering_years<-glm(flowering~year,data_transplants,family="binomial")
+mod_nfl_years<-glm.nb(tot_fl_bodies_corr~year,
+                      data_transplants%>%filter(flowering==1))
+mod_fruiting_years<-glm(fruiting~year,data_transplants,family="binomial")
+mod_nfr_years<-glm.nb(n_tot_fr~year,data_transplants%>%filter(flowering==1))
+mod_frset_years<-glm(fr_set~year,data_transplants%>%filter(flowering==1),
+                     weights=tot_fl_bodies_corr,family="binomial")
+mod_nseed_years<-glm.nb(n_tot_seed~year,data_transplants%>%filter(fruiting==1))
+mod_seedsperfl_years<-glm.nb(n_seeds_per_fl~year,data_transplants%>%
+                            filter(flowering==1&tot_fl_bodies>0))
+```
+
+```{r}
+summary(mod_surv_years) #*
+summary(mod_median_h_years) #*
+summary(mod_flowering_years)
+summary(mod_nfl_years) #*
+summary(mod_fruiting_years)
+summary(mod_nfr_years) #*
+summary(mod_frset_years)
+summary(mod_nseed_years) #*
+summary(mod_seedsperfl_years) #*
+```
+
+```{r}
+plot(ggpredict(mod_surv_years)) #*
+plot(ggpredict(mod_median_h_years)) #*
+plot(ggpredict(mod_flowering_years))
+plot(ggpredict(mod_nfl_years)) #*
+plot(ggpredict(mod_fruiting_years))
+plot(ggpredict(mod_nfr_years)) #*
+plot(ggpredict(mod_frset_years))
+plot(ggpredict(mod_nseed_years)) #*
+plot(ggpredict(mod_seedsperfl_years)) #*
+```
+
+```{r}
+grid.arrange(plot(ggpredict(mod_surv_years))+ggtitle(NULL),
+             plot(ggpredict(mod_median_h_years))+ggtitle(NULL),
+             plot(ggpredict(mod_flowering_years))+ggtitle(NULL),
+             plot(ggpredict(mod_nfl_years))+ggtitle(NULL),
+             plot(ggpredict(mod_fruiting_years))+ggtitle(NULL),
+             plot(ggpredict(mod_nfr_years))+ggtitle(NULL),
+             plot(ggpredict(mod_frset_years))+ggtitle(NULL),
+             plot(ggpredict(mod_nseed_years))+ggtitle(NULL),
+             plot(ggpredict(mod_seedsperfl_years))+ggtitle(NULL))
+```
+
+# Aster model
 
 Survival --> Any flowers --> Flowers --> Any Fruits --> Fruits --> Seeds
 
@@ -1872,19 +1947,25 @@ data_transplants_aster<-data_transplants%>%
 ```
 
 ```{r}
-# Something weird with surival, check later!
 data_transplants_aster$nfl<-with(data_transplants_aster,
                            ifelse(is.na(surv),NA,
                                   ifelse(surv==0,0,
                                          ifelse(flowering==0,0,
-                                                as.integer(data_transplants_aster$
-                                                             tot_fl_bodies_corr)))))
+                                                ifelse(surv==1&is.na(flowering),0,
+                                                       as.integer(data_transplants_aster$
+                                                             tot_fl_bodies_corr))))))
+data_transplants_aster$nfl<-with(data_transplants_aster,
+                                 ifelse(surv==1&is.na(flowering),0,
+                                        nfl))
 data_transplants_aster$nfr<-with(data_transplants_aster,
                            ifelse(surv==0,0,
                                   ifelse(flowering==0,0,
                                          ifelse(fruiting==0,0,
                                                 as.integer(data_transplants_aster$
                                                              n_tot_fr)))))
+data_transplants_aster$nfr<-with(data_transplants_aster,
+                                 ifelse(surv==1&is.na(fruiting),0,
+                                        nfr)) # HERE
 data_transplants_aster$nseed<-with(data_transplants_aster,
                            ifelse(surv==0,0,
                                   ifelse(flowering==0,0,
@@ -3030,17 +3111,6 @@ ggsave(filename="output/figures/aster_plot_points_sig.tiff",
        plot=aster_plot_points_sig,device="tiff",width=20,height=10,
        units="cm",dpi=300)
 ```
-
-# HERE
-
-Two cases with no fruits but seeds (n_tot_seed >0)! I should probably revise all the data row by row and rerun all analyses.
-
-```{r}
-data_transplants_aster%>%
-  filter(year==2023&!is.na(surv))%>%
-  filter(n_tot_seed>0&nseed==0)
-```
-
 
 # Session info
 
