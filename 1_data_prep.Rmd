@@ -26,6 +26,7 @@ library(readxl)
 library(RColorBrewer)
 library(knitr)
 library(janitor)
+library(here)
 ```
 
 ```{r Define ggplot themes and palettes, include=FALSE}
@@ -49,35 +50,36 @@ myPalette <- colorRampPalette(brewer.pal(11, "YlOrRd"))
 Data from mothers and fathers from the greenhouse data file
 
 ```{r}
-data_mothers_fathers<-read_excel("C:/Users/alici/Dropbox/SU/Projects/cerastium_greenhouse/data/edited/Cerastium_greenhouse_spring_2022_editedAV.xlsx", 
+data_mothers_fathers<-read_excel(here("..", "cerastium_greenhouse", "data","edited",
+                                      "Cerastium_greenhouse_spring_2022_editedAV.xlsx"), 
                        sheet="extracted_data_mothers_fathers")
 ```
 
 Phenology data from transplants (2022)
 
 ```{r}
-data_phen_transplants_22<-read_excel("data/edited/Hengill_2022_Final.02_AV.xlsx", 
+data_phen_transplants_22<-read_excel(here("data","edited","Hengill_2022_Final.02_AV.xlsx"), 
                        sheet="extracted_data_phen")
 ```
 
 Phenology data from transplants (2023)
 
 ```{r}
-data_phen_transplants_23<-read_excel("data/edited/cerastium_transplants_2023.xlsx", 
+data_phen_transplants_23<-read_excel(here("data","edited","cerastium_transplants_2023.xlsx"), 
                        sheet="extracted_data_phen")
 ```
 
 Peak data from transplants (2022)
 
 ```{r}
-data_peak_transplants_22<-read_excel("data/edited/Hengill_2022_Final.02_AV.xlsx", 
+data_peak_transplants_22<-read_excel(here("data","edited","Hengill_2022_Final.02_AV.xlsx"), 
                        sheet="extracted_data_peak")
 ```
 
 Peak data from transplants (2023)
 
 ```{r}
-data_peak_transplants_23<-read_excel("data/edited/cerastium_transplants_2023.xlsx", 
+data_peak_transplants_23<-read_excel(here("data","edited","cerastium_transplants_2023.xlsx"), 
                        sheet="extracted_data_peak")
 ```
 

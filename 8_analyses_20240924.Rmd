@@ -648,19 +648,19 @@ fig1_8<-
 fig1<-grid.arrange(
   arrangeGrob(
     arrangeGrob(fig1_1,fig1_2,ncol=2,
-                left=textGrob("      Probability\n      of survival",rot=90,
+                left=textGrob("Survival",rot=90,
                               gp=gpar(fontsize=12,fontfamily="serif"),
                               just="center")),
     arrangeGrob(fig1_3,fig1_4,ncol=2,
-                left=textGrob("      Probability\n      of flowering",rot=90,
+                left=textGrob("      Flowering incidence",rot=90,
                               gp=gpar(fontsize=12,fontfamily="serif"),
                               just="center")),
     arrangeGrob(fig1_5,fig1_6,ncol=2,
-                left=textGrob("      Probability\n      of fruiting",rot=90,
+                left=textGrob("      Fruiting incidence",rot=90,
                               gp=gpar(fontsize=12,fontfamily="serif"),
                               just="center")),
     arrangeGrob(fig1_7,fig1_8,ncol=2,
-                left=textGrob("      Total number\n      of seeds",rot=90,
+                left=textGrob("      Total number of seeds",rot=90,
                               gp=gpar(fontsize=12,fontfamily="serif"),
                               just="center")),
     nrow = 4,
@@ -720,43 +720,201 @@ ggplot()+
   ggtitle("2022")
 ```
 
-## Differences in fitness components among years - needed?
+# Appendix 2: Distributions fitness components
+
+```{r}
+App2<-grid.arrange(
+  ggplot(data_transplants%>%filter(!is.na(surv)),
+         aes(x=factor(surv)))+
+    geom_bar(color="darkgrey",fill="grey",alpha=0.6)+facet_wrap(~year)+
+    my_theme()+xlab("Survival")+ylab(NULL),
+  ggplot(data_transplants%>%filter(surv==1&!is.na(flowering)),
+         aes(x=factor(flowering)))+
+    geom_bar(color="darkgrey",fill="grey",alpha=0.6)+facet_wrap(~year)+
+    my_theme()+xlab("Flowering incidence")+ylab(NULL),
+  ggplot(data_transplants%>%filter(flowering==1),
+         aes(x=factor(fruiting)))+
+    geom_bar(color="darkgrey",fill="grey",alpha=0.6)+facet_wrap(~year)+
+    my_theme()+xlab("Fruiting incidence")+ylab(NULL),
+  ggplot(data_transplants%>%filter(fruiting==1),
+         aes(x=n_tot_seed))+
+    geom_histogram(bins=20,color="darkgrey",fill="grey",alpha=0.6)+
+    facet_wrap(~year)+
+    my_theme()+xlab("Total number of seeds")+ylab(NULL),
+  ncol=2,
+  left=textGrob("Count",rot=90,
+                gp=gpar(fontsize=16,fontfamily="serif"),just="center"))
+ggsave(file="output/figures/App2.tiff", plot=App2,width=10,height=8,dpi=300,
+       compression="lzw")
+```
+
+
+# Appendix 3: Differences in fitness components among years
 
 ```{r warning=FALSE}
 mod_surv_years<-glm(surv~year,data_transplants,family="binomial")
-mod_flowering_years<-glm(flowering~year,data_transplants,family="binomial")
-mod_nfl_years<-glm.nb(tot_fl_bodies_corr~year,
-                      data_transplants%>%filter(flowering==1))
-mod_fruiting_years<-glm(fruiting~year,data_transplants,family="binomial")
-mod_nfr_years<-glm.nb(n_tot_fr~year,data_transplants%>%filter(flowering==1))
+mod_flowering_years<-glm(flowering~year,data_transplants%>%filter(surv==1),
+                         family="binomial")
+mod_fruiting_years<-glm(fruiting~year,data_transplants%>%filter(flowering==1),
+                        family="binomial")
 mod_nseed_years<-glm.nb(n_tot_seed~year,data_transplants%>%filter(fruiting==1))
 ```
 
 ```{r}
 summary(mod_surv_years) #*
 summary(mod_flowering_years)
-summary(mod_nfl_years) #*
 summary(mod_fruiting_years)
-summary(mod_nfr_years) #*
 summary(mod_nseed_years) #*
 ```
 
 ```{r}
 plot(ggpredict(mod_surv_years)) #*
 plot(ggpredict(mod_flowering_years))
-plot(ggpredict(mod_nfl_years)) #*
 plot(ggpredict(mod_fruiting_years))
-plot(ggpredict(mod_nfr_years)) #*
 plot(ggpredict(mod_nseed_years)) #*
 ```
 
 ```{r}
-grid.arrange(plot(ggpredict(mod_surv_years))+ggtitle(NULL),
-             plot(ggpredict(mod_flowering_years))+ggtitle(NULL),
-             plot(ggpredict(mod_nfl_years))+ggtitle(NULL),
-             plot(ggpredict(mod_fruiting_years))+ggtitle(NULL),
-             plot(ggpredict(mod_nfr_years))+ggtitle(NULL),
-             plot(ggpredict(mod_nseed_years))+ggtitle(NULL))
+App3<-grid.arrange(
+  ggplot(data_transplants%>%group_by(year)%>%
+           summarize(mean_value=mean(surv,na.rm=T),
+                     se_value=sd(surv,na.rm=T)/sqrt(n())),
+         aes(x=factor(year),y= mean_value))+geom_point(size=4)+
+    geom_errorbar(aes(ymin=mean_value-se_value,ymax=mean_value+se_value),
+                  width=0.2)+
+    xlab("Year")+ylab("Survival")+my_theme(),
+  ggplot(data_transplants%>%filter(surv==1)%>%group_by(year)%>%
+           summarize(mean_value=mean(flowering,na.rm=T),
+                     se_value=sd(flowering,na.rm=T)/sqrt(n())),
+         aes(x=factor(year),y= mean_value))+geom_point(size=4)+
+    geom_errorbar(aes(ymin=mean_value-se_value,ymax=mean_value+se_value),
+                  width=0.2)+
+    xlab("Year")+ylab("Flowering incidence")+my_theme(),
+  ggplot(data_transplants%>%filter(flowering==1)%>%group_by(year)%>%
+           summarize(mean_value=mean(fruiting,na.rm=T),
+                     se_value=sd(fruiting,na.rm=T)/sqrt(n())),
+         aes(x=factor(year),y= mean_value))+geom_point(size=4)+
+    geom_errorbar(aes(ymin=mean_value-se_value,ymax=mean_value+se_value),
+                  width=0.2)+
+    xlab("Year")+ylab("Fruiting incidence")+my_theme(),
+  ggplot(data_transplants%>%filter(fruiting==1)%>%group_by(year)%>%
+           summarize(mean_value=mean(n_tot_seed,na.rm=T),
+                     se_value=sd(n_tot_seed,na.rm=T)/sqrt(n())),
+         aes(x=factor(year),y= mean_value))+geom_point(size=4)+
+    geom_errorbar(aes(ymin=mean_value-se_value,ymax=mean_value+se_value),
+                  width=0.2)+
+    xlab("Year")+ylab("Total number of seeds")+my_theme(),
+  ncol=2)
+ggsave(file="output/figures/App3.tiff", plot=App3,width=10,height=8,dpi=300,
+       compression="lzw")
+```
+
+
+# Path model n seeds
+
+Path models with fitness component number of seeds, to see the direct effects of temp and temp_diff vs. the indirect effects via FFD. Path models are not possible to build with Aster models because FFD is NA when surv = 0 and / or flowering = 0.
+
+I use GLMMs with plot as random factor.
+
+## Fit component models
+
+```{r}
+data_path_22<-data_transplants%>%filter(year==2022&fruiting==1)%>%
+  mutate(temp_diff_sq=I(temp_diff^2))
+data_path_23<-data_transplants%>%filter(year==2023&fruiting==1)%>%
+  mutate(temp_diff_sq=I(temp_diff^2))
+```
+
+```{r}
+mod_nseed_22_path1<-glmmTMB(FFD_corr~temp+temp_diff+temp_diff_sq+poll_type+
+                              (1|plot),data_path_22,family="gaussian")
+mod_nseed_22_path2<-glmmTMB(n_tot_seed~temp+temp_diff+temp_diff_sq+poll_type+
+                              FFD_corr+(1|plot),data_path_22,family="nbinom2")
+mod_nseed_23_path1<-glmmTMB(FFD_corr~temp+temp_diff+temp_diff_sq+poll_type+
+                              (1|plot),data_path_23,family="gaussian")
+mod_nseed_23_path2<-glmmTMB(n_tot_seed~temp+temp_diff+temp_diff_sq+poll_type+
+                              FFD_corr+(1|plot),data_path_23,family="nbinom2")
+```
+
+## Diagnostics
+
+```{r}
+plot(simulateResiduals(mod_nseed_22_path1)) # KS* but how to improve?
+plot(simulateResiduals(mod_nseed_22_path2))
+plot(check_collinearity(mod_nseed_22_path1))
+plot(check_collinearity(mod_nseed_22_path2))
+plot(simulateResiduals(mod_nseed_23_path1)) # KS* but how to improve?
+plot(simulateResiduals(mod_nseed_23_path2))
+plot(check_collinearity(mod_nseed_23_path1))
+plot(check_collinearity(mod_nseed_23_path2))
+```
+
+## Fit path models
+
+```{r}
+path_nseed_22<-psem(mod_nseed_22_path1,mod_nseed_22_path2)
+path_nseed_23<-psem(mod_nseed_23_path1,mod_nseed_23_path2)
+```
+
+```{r}
+coefs(path_nseed_22)
+coefs(path_nseed_23)
+```
+
+# Path model n seeds in flowering ids
+
+Path models with fitness component fruiting x fitness component number of seeds, to see the direct effects of temp and temp_diff vs. the indirect effects via FFD. Path models are not possible to build with Aster models because FFD is NA when surv = 0 and / or flowering = 0.
+
+I use GLMMs with plot as random factor.
+
+## Fit component models
+
+```{r}
+data_path_22_in_fl<-data_transplants%>%filter(year==2022&flowering==1)%>%
+  mutate(temp_diff_sq=I(temp_diff^2))
+data_path_23_in_fl<-data_transplants%>%filter(year==2023&flowering==1)%>%
+  mutate(temp_diff_sq=I(temp_diff^2))
+```
+
+```{r}
+mod_nseed_22_in_fl_path1<-glmmTMB(FFD_corr~temp+temp_diff+temp_diff_sq+
+                                    poll_type+(1|plot),
+                                  data_path_22_in_fl,family="gaussian")
+mod_nseed_22_in_fl_path2<-glmmTMB(n_tot_seed~temp+temp_diff+temp_diff_sq+
+                                    poll_type+FFD_corr+(1|plot),
+                                  data_path_22_in_fl,family="nbinom2")
+mod_nseed_23_in_fl_path1<-glmmTMB(FFD_corr~temp+temp_diff+temp_diff_sq+
+                                    poll_type+(1|plot),
+                                  data_path_23_in_fl,family="gaussian")
+mod_nseed_23_in_fl_path2<-glmmTMB(n_tot_seed~temp+temp_diff+temp_diff_sq+
+                                    poll_type+FFD_corr+(1|plot),
+                                  data_path_23_in_fl,family="nbinom2")
+```
+
+## Diagnostics
+
+```{r}
+plot(simulateResiduals(mod_nseed_22_in_fl_path1)) # KS* but how to improve?
+plot(simulateResiduals(mod_nseed_22_in_fl_path2))
+plot(check_collinearity(mod_nseed_22_in_fl_path1))
+plot(check_collinearity(mod_nseed_22_in_fl_path2))
+plot(simulateResiduals(mod_nseed_23_in_fl_path1)) # KS* but how to improve?
+plot(simulateResiduals(mod_nseed_23_in_fl_path2))
+plot(check_collinearity(mod_nseed_23_in_fl_path1))
+plot(check_collinearity(mod_nseed_23_in_fl_path2))
+```
+
+## Fit path models
+
+```{r}
+path_nseed_22_in_fl<-psem(mod_nseed_22_in_fl_path1,mod_nseed_22_in_fl_path2,
+                          temp %~~% temp_diff)
+path_nseed_23_in_fl<-psem(mod_nseed_23_in_fl_path1,mod_nseed_23_in_fl_path2)
+```
+
+```{r}
+coefs(path_nseed_22_in_fl)
+coefs(path_nseed_23_in_fl)
 ```
 
 # Correlation temp - temp_diff
@@ -877,7 +1035,7 @@ summary(mod_nseed_22_temp_diff)
 summary(mod_nseed_23_temp_diff)
 ``` 
 
-## Appendix 1
+## Appendix 4
 
 ```{r}
 tab_model(mod_surv_22_temp,mod_flowering_22_temp,mod_fruiting_22_temp,
@@ -919,10 +1077,10 @@ tab_model(mod_surv_23_temp_diff,mod_flowering_23_temp_diff,
           file="output/tables/summary_2023_temp_diff.doc")
 ```
 
-## Appendix 2
+## Appendix 5
 
 ```{r}
-App2_1<-ggplot()+
+App5_1<-ggplot()+
   geom_jitter(data=data_transplants,aes(x=temp,y=surv,color=year),
               size=1,alpha=0.2,width=0,height=0.04)+
   geom_ribbon(data=ggpredict(mod_surv_22_temp,terms=c("temp[all]")),
@@ -937,7 +1095,7 @@ App2_1<-ggplot()+
             aes(x=x,y=predicted),color="#00BFC4",size=0.5)+
   my_theme()+xlab(NULL)+ylab(NULL)+
   scale_x_continuous(limits=c(0,50),breaks=seq(0,50,10))
-App2_2<-ggplot()+
+App5_2<-ggplot()+
   geom_jitter(data=data_transplants,aes(x=temp_diff,y=surv,color=year),
               size=1,alpha=0.2,width=0,height=0.04)+
   geom_ribbon(data=ggpredict(mod_surv_22_temp_diff,terms=c("temp_diff[all]")),
@@ -951,7 +1109,7 @@ App2_2<-ggplot()+
   geom_line(data=ggpredict(mod_surv_23_temp_diff,terms=c("temp_diff[all]")),
             aes(x=x,y=predicted),color="#00BFC4",size=0.5)+
   my_theme()+xlab(NULL)+ylab(NULL)
-App2_3<-ggplot()+
+App5_3<-ggplot()+
   geom_jitter(data=data_transplants,aes(x=temp,y=flowering,color=year),
               size=1,alpha=0.2,width=0,height=0.04)+
   geom_ribbon(data=ggpredict(mod_flowering_22_temp,terms=c("temp[all]")),
@@ -966,7 +1124,7 @@ App2_3<-ggplot()+
             aes(x=x,y=predicted),color="#00BFC4",size=0.5)+
   my_theme()+xlab(NULL)+ylab(NULL)+
   scale_x_continuous(limits=c(0,50),breaks=seq(0,50,10))
-App2_4<-ggplot()+
+App5_4<-ggplot()+
   geom_jitter(data=data_transplants,aes(x=temp_diff,y=flowering,color=year),
               size=1,alpha=0.2,width=0,height=0.04)+
   geom_ribbon(data=ggpredict(mod_flowering_22_temp_diff,terms=c("temp_diff[all]")),
@@ -980,7 +1138,7 @@ App2_4<-ggplot()+
   geom_line(data=ggpredict(mod_flowering_23_temp_diff,terms=c("temp_diff[all]")),
             aes(x=x,y=predicted),color="#00BFC4",size=0.5,linetype="dashed")+
   my_theme()+xlab(NULL)+ylab(NULL)
-App2_5<-ggplot()+
+App5_5<-ggplot()+
   geom_jitter(data=data_transplants,aes(x=temp,y=fruiting,color=year),
               size=1,alpha=0.2,width=0,height=0.04)+
   geom_ribbon(data=ggpredict(mod_fruiting_22_temp,terms=c("temp[all]")),
@@ -995,7 +1153,7 @@ App2_5<-ggplot()+
             aes(x=x,y=predicted),color="#00BFC4",size=0.5,linetype="dashed")+
   my_theme()+xlab(NULL)+ylab(NULL)+
   scale_x_continuous(limits=c(0,50),breaks=seq(0,50,10))
-App2_6<-ggplot()+
+App5_6<-ggplot()+
   geom_jitter(data=data_transplants,aes(x=temp_diff,y=fruiting,color=year),
               size=1,alpha=0.2,width=0,height=0.04)+
   geom_ribbon(data=ggpredict(mod_fruiting_22_temp_diff,terms=c("temp_diff[all]")),
@@ -1009,7 +1167,7 @@ App2_6<-ggplot()+
   geom_line(data=ggpredict(mod_fruiting_23_temp_diff,terms=c("temp_diff[all]")),
             aes(x=x,y=predicted),color="#00BFC4",size=0.5,linetype="dashed")+
   my_theme()+xlab(NULL)+ylab(NULL)
-App2_7<-ggplot()+
+App5_7<-ggplot()+
   geom_point(data=data_transplants%>%filter(fruiting==1),
              aes(x=temp,y=n_tot_seed,color=year),size=1,alpha=0.2)+
   geom_ribbon(data=ggpredict(mod_nseed_22_temp,terms=c("temp[all]")),
@@ -1024,7 +1182,7 @@ App2_7<-ggplot()+
             aes(x=x,y=predicted),color="#00BFC4",size=0.5,linetype="dashed")+
   my_theme()+xlab(NULL)+ylab(NULL)+
   scale_x_continuous(limits=c(0,50),breaks=seq(0,50,10))
-App2_8<-ggplot()+
+App5_8<-ggplot()+
   geom_point(data=data_transplants%>%filter(fruiting==1),
              aes(x=temp_diff,y=n_tot_seed,color=year),size=1,alpha=0.2)+
   geom_ribbon(data=ggpredict(mod_nseed_22_temp_diff,terms=c("temp_diff[all]")),
@@ -1041,22 +1199,22 @@ App2_8<-ggplot()+
 ```
 
 ```{r}
-App2<-grid.arrange(
+App5<-grid.arrange(
   arrangeGrob(
-    arrangeGrob(App2_1,App2_2,ncol=2,
-                left=textGrob("      Probability\n      of survival",rot=90,
+    arrangeGrob(App5_1,App5_2,ncol=2,
+                left=textGrob("      Survival",rot=90,
                               gp=gpar(fontsize=12,fontfamily="serif"),
                               just="center")),
-    arrangeGrob(App2_3,App2_4,ncol=2,
-                left=textGrob("      Probability\n      of flowering",rot=90,
+    arrangeGrob(App5_3,App5_4,ncol=2,
+                left=textGrob("      Flowering incidence",rot=90,
                               gp=gpar(fontsize=12,fontfamily="serif"),
                               just="center")),
-    arrangeGrob(App2_5,App2_6,ncol=2,
-                left=textGrob("      Probability\n      of fruiting",rot=90,
+    arrangeGrob(App5_5,App5_6,ncol=2,
+                left=textGrob("      Fruiting incidence",rot=90,
                               gp=gpar(fontsize=12,fontfamily="serif"),
                               just="center")),
-    arrangeGrob(App2_7,App2_8,ncol=2,
-                left=textGrob("      Total number\n      of seeds",rot=90,
+    arrangeGrob(App5_7,App5_8,ncol=2,
+                left=textGrob("      Total number of seeds",rot=90,
                               gp=gpar(fontsize=12,fontfamily="serif"),
                               just="center")),
     nrow = 4,
@@ -1069,7 +1227,7 @@ App2<-grid.arrange(
       heights = unit.c(unit(1, "lines"), unit(0.5, "lines")))
     )
   )
-ggsave(file="output/figures/App2.tiff", plot=App2,width=6,height=8,dpi=300,
+ggsave(file="output/figures/App5.tiff", plot=App5,width=6,height=8,dpi=300,
        compression="lzw")
 ```
 
@@ -1428,7 +1586,7 @@ redata23$temp_diff_s<-scale(redata23$temp_diff)
 redata23$FFD_corr_s<-scale(redata23$FFD_corr)
 ```
 
-## Appendix 3: Fit distributions to n seeds
+## Appendix 1: Fit distributions to n seeds
 
 ```{r}
 # Create two distributions
@@ -1481,7 +1639,7 @@ annotations_nb <- data.frame(
 )
 
 # Plots with ggplot2
-App3<-grid.arrange(
+App1<-grid.arrange(
   ggplot(df_pois,aes(x=value,fill=group,color=group)) +
     geom_histogram(position="identity",bins=20,alpha=0.5) +
     my_theme_legend()+facet_wrap(~year)+theme(legend.position="top")+
@@ -1495,7 +1653,7 @@ App3<-grid.arrange(
     geom_text(data=annotations_nb,aes(x=x,y=y,label=label), 
               inherit.aes=FALSE,hjust=1,vjust=1,family="Times New Roman"),
   ncol=1)
-ggsave(file="output/figures/App3.tiff", plot=App3,width=6,height=8,dpi=300,
+ggsave(file="output/figures/App1.tiff", plot=App1,width=6,height=8,dpi=300,
        compression="lzw")
 ```
 
@@ -2056,7 +2214,7 @@ fig2<-grid.arrange(
     my_theme(),
   ncol=2,left=textGrob("     Predicted fitness",rot=90,
                        gp=gpar(fontsize=16,fontfamily="serif"),just="center"))
-ggsave(file="output/figures/fig2.tiff", plot=fig2,width=6,height=3,dpi=300,
+ggsave(file="output/figures/fig2.tiff", plot=fig2,width=7,height=3.5,dpi=300,
        compression="lzw")
 ```
 
@@ -2099,183 +2257,10 @@ fig2_nopoints<-grid.arrange(
   ncol=2,left=textGrob("    Predicted fitness",rot=90,
                        gp=gpar(fontsize=16,fontfamily="serif"),just="center"))
 ggsave(file="output/figures/fig2_nopoints.tiff",
-       plot=fig2_nopoints,width=6,height=3,dpi=300,compression="lzw")
+       plot=fig2_nopoints,width=7,height=3.5,dpi=300,compression="lzw")
 ```
 
-# Aster both vars, plot as random (App 4)
-
-## 2022
-
-### Fit model
-
-Using Poisson for counts, because negative binomial *cannot* be used with reaster.
-
-Fitting the full Aster model (with plot as random):
-
-```{r}
-aster22_pois <- reaster(fixed=resp ~ varb+seeds:(temp_s+temp_diff_s+
-                                                   I(temp_diff_s^2)+poll_type), 
-                 random=list(plot= ~0 + seeds:plot), 
-                 pred, fam, famlist=famlist1, varb, idvar=as.numeric(unique_id), 
-                 root, data = redata22)
-```
-
-```{r}
-summary(aster22_pois)
-```
-### Appendix 4: LRTs
-
-The Aster manual advises to not look at significances in the summary, but instead compare models with a likelihood ratio test to evaluate significance of each term. The comparison between two or more models . . . will only be valid if they are (1) fitted to the same dataset, (2) models are nested, (3) models are of the same type (all conditional or all unconditional), (4) have the same dependence graph and exponential families. None of this is currently checked.
-
-Determine the significance of fixed effects by comparing submodels without the term of interest to the full model using LRTs.
-
-Use LRTs comparing submodels to fuller models to test each predictor of interest.
-
-Submodels:
-
-Testing the significance of seeds:temp_s
-
-```{r}
-aster22_pois_1 <- reaster(fixed=resp ~ varb+seeds:(temp_diff_s+I(temp_diff_s^2)+
-                                                     poll_type), 
-                          random=list(plot= ~0 + seeds:plot), 
-                          pred, fam, famlist=famlist1, varb,
-                          idvar=as.numeric(unique_id), root, data = redata22)
-```
-
-```{r}
-anova(aster22_pois_1,aster22_pois)
-```
-
-Testing the significance of seeds:temp_diff_s
-
-```{r}
-aster22_pois_2 <- reaster(fixed=resp ~ varb+seeds:(temp_s+I(temp_diff_s^2)+
-                                                     poll_type), 
-                 random=list(plot= ~0 + seeds:plot), 
-                 pred, fam, famlist=famlist1, varb,
-                 idvar=as.numeric(unique_id), root, data = redata22)
-```
-
-```{r}
-anova(aster22_pois_2,aster22_pois)
-```
-
-Testing the significance of seeds:I(temp_diff_s^2)
-
-```{r}
-aster22_pois_3 <- reaster(fixed=resp ~ varb+seeds:(temp_s+temp_diff_s+
-                                                     poll_type),
-                          random=list(plot= ~0 + seeds:plot),
-                          pred, fam, famlist=famlist1, varb,
-                          idvar=as.numeric(unique_id), root, data = redata22)
-```
-
-```{r}
-anova(aster22_pois_3,aster22_pois)
-```
-
-Testing the significance of seeds:poll_type
-
-```{r}
-aster22_pois_4 <- reaster(fixed=resp ~ varb+seeds:(temp_s+temp_diff_s+
-                                                     I(temp_diff_s^2)),
-                          random=list(plot= ~0 + seeds:plot),
-                          pred, fam, famlist=famlist1, varb,
-                          idvar=as.numeric(unique_id), root, data = redata22)
-```
-
-```{r}
-anova(aster22_pois_4,aster22_pois)
-```
-
-## 2023
-
-### Fit model
-
-Using Poisson for counts, because negative binomial *cannot* be used with reaster.
-
-Fitting the full Aster model (with plot as random):
-
-```{r}
-aster23_pois <- reaster(fixed=resp ~ varb+seeds:(temp_s+temp_diff_s+
-                                                   I(temp_diff_s^2)+poll_type), 
-                 random=list(plot= ~0 + seeds:plot), 
-                 pred, fam, famlist=famlist1, varb, idvar=as.numeric(unique_id), 
-                 root, data = redata23)
-```
-
-```{r}
-summary(aster23_pois)
-```
-
-### Appendix 4: LRTs
-
-The Aster manual advises to not look at significances in the summary, but instead compare models with a likelihood ratio test to evaluate significance of each term. The comparison between two or more models . . . will only be valid if they are (1) fitted to the same dataset, (2) models are nested, (3) models are of the same type (all conditional or all unconditional), (4) have the same dependence graph and exponential families. None of this is currently checked.
-
-Determine the significance of fixed effects by comparing submodels without the term of interest to the full model using LRTs.
-
-Use LRTs comparing submodels to fuller models to test each predictor of interest.
-
-Submodels:
-
-Testing the significance of seeds:temp_s
-
-```{r}
-aster23_pois_1 <- reaster(fixed=resp ~ varb+seeds:(temp_diff_s+I(temp_diff_s^2)+
-                                                     poll_type), 
-                          random=list(plot= ~0 + seeds:plot), 
-                          pred, fam, famlist=famlist1, varb,
-                          idvar=as.numeric(unique_id), root, data = redata23)
-```
-
-```{r}
-anova(aster23_pois_1,aster23_pois)
-```
-
-Testing the significance of seeds:temp_diff_s
-
-```{r}
-aster23_pois_2 <- reaster(fixed=resp ~ varb+seeds:(temp_s+I(temp_diff_s^2)+
-                                                     poll_type), 
-                 random=list(plot= ~0 + seeds:plot), 
-                 pred, fam, famlist=famlist1, varb,
-                 idvar=as.numeric(unique_id), root, data = redata23)
-```
-
-```{r}
-anova(aster23_pois_2,aster23_pois)
-```
-
-Testing the significance of seeds:I(temp_diff_s^2)
-
-```{r}
-aster23_pois_3 <- reaster(fixed=resp ~ varb+seeds:(temp_s+temp_diff_s+
-                                                     poll_type),
-                          random=list(plot= ~0 + seeds:plot),
-                          pred, fam, famlist=famlist1, varb,
-                          idvar=as.numeric(unique_id), root, data = redata23)
-```
-
-```{r}
-anova(aster23_pois_3,aster23_pois)
-```
-
-Testing the significance of seeds:poll_type
-
-```{r}
-aster23_pois_4 <- reaster(fixed=resp ~ varb+seeds:(temp_s+temp_diff_s+
-                                                     I(temp_diff_s^2)),
-                          random=list(plot= ~0 + seeds:plot),
-                          pred, fam, famlist=famlist1, varb,
-                          idvar=as.numeric(unique_id), root, data = redata23)
-```
-
-```{r}
-anova(aster23_pois_4,aster23_pois)
-```
-
-# Aster single vars, plot as fixed (App 5)
+# Aster single vars, plot as fixed (App 6-7)
 
 ## temp
 
@@ -2294,7 +2279,7 @@ aster22_nb_plotfi_temp <- aster(resp ~ varb+seeds:(temp_s+poll_type+plot),
 summary(aster22_nb_plotfi_temp)
 ```
 
-#### Appendix 5: LRTs
+#### Appendix 6: LRTs
 
 Submodels:
 
@@ -2429,7 +2414,7 @@ aster23_nb_plotfi_temp <- aster(resp ~ varb+seeds:(temp_s+poll_type+plot),
 summary(aster23_nb_plotfi_temp,info.tol=1e-15)
 ```
 
-#### Appendix 5: LRTs
+#### Appendix 6: LRTs
 
 Submodels:
 
@@ -2568,7 +2553,7 @@ aster22_nb_plotfi_temp_diff <- aster(resp ~ varb+seeds:(temp_diff_s+
 summary(aster22_nb_plotfi_temp_diff)
 ```
 
-#### Appendix 5: LRTs
+#### Appendix 6: LRTs
 
 Submodels:
 
@@ -2724,7 +2709,7 @@ aster23_nb_plotfi_temp_diff <- aster(resp ~ varb+seeds:(temp_diff_s+
 summary(aster23_nb_plotfi_temp_diff,info.tol=1e-15)
 ```
 
-#### Appendix 5: LRTs
+#### Appendix 6: LRTs
 
 Submodels:
 
@@ -2863,10 +2848,10 @@ aster23_nb_plotfi_temp_diff_predict1.df.seeds<-aster23_nb_plotfi_temp_diff_predi
   summarise(fit=mean(fit),se=mean(se),ymin=mean(ymin),ymax=mean(ymax))
 ```
 
-## Appendix 6
+## Appendix 7
 
 ```{r}
-App6<-grid.arrange(
+App7<-grid.arrange(
   ggplot()+
     geom_point(data=data_transplants%>%filter(fruiting==1),
                aes(x=temp,y=n_tot_seed,color=year),size=1,alpha=0.2)+
@@ -2903,12 +2888,12 @@ App6<-grid.arrange(
     my_theme(),
   ncol=2,left=textGrob("Predicted fitness",rot=90,
                        gp=gpar(fontsize=16,fontfamily="serif"),just="center"))
-ggsave(file="output/figures/App6.tiff", plot=App6,width=6,height=3,dpi=300,
+ggsave(file="output/figures/App7.tiff", plot=App7,width=7,height=3.5,dpi=300,
        compression="lzw")
 ```
 
 ```{r}
-App6_nopoints<-grid.arrange(
+App7_nopoints<-grid.arrange(
   ggplot()+
     #geom_point(data=data_transplants%>%filter(fruiting==1),
     #           aes(x=temp,y=n_tot_seed,color=year),size=1.5,alpha=0.2)+
@@ -2945,264 +2930,8 @@ App6_nopoints<-grid.arrange(
     my_theme()+scale_y_continuous(limits=c(0,85)),
   ncol=2,left=textGrob("Predicted fitness",rot=90,
                        gp=gpar(fontsize=16,fontfamily="serif"),just="center"))
-ggsave(file="output/figures/App6_nopoints.tiff",plot=App6_nopoints,
-       width=6,height=3,dpi=300,compression="lzw")
-```
-
-# Aster single vars, plot as random (App 7)
-
-## temp
-
-### 2022
-
-#### Fit model
-
-```{r}
-aster22_temp_pois <- reaster(fixed=resp ~ varb+seeds:(temp_s+poll_type), 
-                                  random=list(plot= ~0 + seeds:plot), 
-                                  pred, fam, famlist=famlist1, varb,
-                                  idvar=as.numeric(unique_id), 
-                                  root, data = redata22)
-```
-
-```{r}
-summary(aster22_temp_pois)
-```
-
-#### Appendix 7: LRTs
-
-Submodels:
-
-Testing the significance of seeds:temp_s
-
-```{r}
-aster22_temp_pois_1 <- reaster(fixed=resp ~ varb+seeds:(poll_type), 
-                                  random=list(plot= ~0 + seeds:plot), 
-                                  pred, fam, famlist=famlist1, varb,
-                                  idvar=as.numeric(unique_id), 
-                                  root, data = redata22)
-```
-
-```{r}
-anova(aster22_temp_pois_1,aster22_temp_pois)
-```
-
-Testing the significance of seeds:poll_type
-
-```{r}
-aster22_temp_pois_2 <- reaster(fixed=resp ~ varb+seeds:(temp_s), 
-                                  random=list(plot= ~0 + seeds:plot), 
-                                  pred, fam, famlist=famlist1, varb,
-                                  idvar=as.numeric(unique_id), 
-                                  root, data = redata22)
-```
-
-```{r}
-anova(aster22_temp_pois_2,aster22_temp_pois)
-```
-
-### 2023
-
-#### Fit model
-
-```{r}
-aster23_temp_pois <- reaster(fixed=resp ~ varb+seeds:(temp_s+poll_type), 
-                                  random=list(plot= ~0 + seeds:plot), 
-                                  pred, fam, famlist=famlist1, varb,
-                                  idvar=as.numeric(unique_id), 
-                                  root, data = redata23)
-```
-
-```{r}
-summary(aster23_temp_pois)
-```
-
-#### Appendix 7: LRTs
-
-Submodels:
-
-Testing the significance of seeds:temp_s
-
-```{r}
-aster23_temp_pois_1 <- reaster(fixed=resp ~ varb+seeds:(poll_type), 
-                                  random=list(plot= ~0 + seeds:plot), 
-                                  pred, fam, famlist=famlist1, varb,
-                                  idvar=as.numeric(unique_id), 
-                                  root, data = redata23)
-```
-
-```{r}
-anova(aster23_temp_pois_1,aster23_temp_pois)
-```
-
-Testing the significance of seeds:poll_type
-
-```{r}
-aster23_temp_pois_2 <- reaster(fixed=resp ~ varb+seeds:(temp_s), 
-                                  random=list(plot= ~0 + seeds:plot), 
-                                  pred, fam, famlist=famlist1, varb,
-                                  idvar=as.numeric(unique_id), 
-                                  root, data = redata23)
-```
-
-```{r}
-anova(aster23_temp_pois_2,aster23_temp_pois)
-```
-
-## temp_diff
-
-### 2022
-
-#### Fit model
-
-```{r}
-aster22_temp_diff_pois <- reaster(fixed=resp ~ varb+seeds:(temp_diff_s+
-                                                             I(temp_diff_s^2)+
-                                                             poll_type), 
-                                  random=list(plot= ~0 + seeds:plot), 
-                                  pred, fam, famlist=famlist1, varb,
-                                  idvar=as.numeric(unique_id), 
-                                  root, data = redata22)
-```
-
-```{r}
-summary(aster22_temp_diff_pois)
-```
-
-#### Appendix 7: LRTs
-
-Submodels:
-
-Testing the significance of seeds:temp_diff_s
-
-```{r}
-aster22_temp_diff_pois_1 <- reaster(fixed=resp ~ varb+seeds:(I(temp_diff_s^2)+
-                                                               poll_type), 
-                                  random=list(plot= ~0 + seeds:plot), 
-                                  pred, fam, famlist=famlist1, varb,
-                                  idvar=as.numeric(unique_id), 
-                                  root, data = redata22)
-```
-
-```{r}
-anova(aster22_temp_diff_pois_1,aster22_temp_diff_pois)
-```
-
-Testing the significance of seeds:I(temp_diff_s^2)
-
-```{r}
-aster22_temp_diff_pois_2 <- reaster(fixed=resp ~ varb+seeds:(temp_diff_s+
-                                                               poll_type), 
-                                  random=list(plot= ~0 + seeds:plot), 
-                                  pred, fam, famlist=famlist1, varb,
-                                  idvar=as.numeric(unique_id), 
-                                  root, data = redata22)
-```
-
-```{r}
-anova(aster22_temp_diff_pois_2,aster22_temp_diff_pois)
-```
-
-Testing the significance of seeds:poll_type
-
-```{r}
-aster22_temp_diff_pois_3 <- reaster(fixed=resp ~ varb+seeds:(temp_diff+
-                                                               I(temp_diff_s^2)), 
-                                  random=list(plot= ~0 + seeds:plot), 
-                                  pred, fam, famlist=famlist1, varb,
-                                  idvar=as.numeric(unique_id), 
-                                  root, data = redata22)
-```
-
-```{r}
-anova(aster22_temp_diff_pois_3,aster22_temp_diff_pois)
-```
-
-### 2023
-
-#### Fit model
-
-```{r}
-aster23_temp_diff_pois <- reaster(fixed=resp ~ varb+seeds:(temp_diff_s+
-                                                             I(temp_diff_s^2)+
-                                                             poll_type), 
-                                  random=list(plot= ~0 + seeds:plot), 
-                                  pred, fam, famlist=famlist1, varb,
-                                  idvar=as.numeric(unique_id), 
-                                  root, data = redata23)
-```
-
-```{r}
-summary(aster23_temp_diff_pois)
-```
-
-#### Appendix 7: LRTs
-
-Submodels:
-
-Testing the significance of seeds:temp_diff_s
-
-```{r}
-aster23_temp_diff_pois_1 <- reaster(fixed=resp ~ varb+seeds:(I(temp_diff_s^2)+
-                                                               poll_type), 
-                                  random=list(plot= ~0 + seeds:plot), 
-                                  pred, fam, famlist=famlist1, varb,
-                                  idvar=as.numeric(unique_id), 
-                                  root, data = redata23)
-```
-
-```{r}
-anova(aster23_temp_diff_pois_1,aster23_temp_diff_pois)
-```
-
-Testing the significance of seeds:I(temp_diff_s^2)
-
-```{r}
-aster23_temp_diff_pois_2 <- reaster(fixed=resp ~ varb+seeds:(temp_diff_s+
-                                                               poll_type), 
-                                  random=list(plot= ~0 + seeds:plot), 
-                                  pred, fam, famlist=famlist1, varb,
-                                  idvar=as.numeric(unique_id), 
-                                  root, data = redata23)
-```
-
-```{r}
-anova(aster23_temp_diff_pois_2,aster23_temp_diff_pois)
-```
-
-Testing the significance of seeds:poll_type
-
-```{r}
-aster23_temp_diff_pois_3 <- reaster(fixed=resp ~ varb+seeds:(temp_diff+
-                                                               I(temp_diff_s^2)), 
-                                  random=list(plot= ~0 + seeds:plot), 
-                                  pred, fam, famlist=famlist1, varb,
-                                  idvar=as.numeric(unique_id), 
-                                  root, data = redata23)
-```
-
-```{r}
-anova(aster23_temp_diff_pois_3,aster23_temp_diff_pois)
-```
-
-# TO DO: Aster models plot as fixed with FFD
-
-## 2022
-
-### Fit model
-
-##### aster nb
-
-```{r}
-aster22_nb_plotfi_FFD <- aster(resp ~ varb+seeds:(temp_s+temp_diff_s+
-                                                  I(temp_diff_s^2)+FFD_corr_s+
-                                                  poll_type+plot), 
-                 pred, fam, famlist=famlist, varb, idvar=as.numeric(unique_id), 
-                 root, data = redata22)
-```
-
-```{r}
-summary(aster22_nb_plotfi_FFD)
+ggsave(file="output/figures/App7_nopoints.tiff",plot=App7_nopoints,
+       width=7,height=3.5,dpi=300,compression="lzw")
 ```
 
 # Session info
