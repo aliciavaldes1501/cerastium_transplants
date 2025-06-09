@@ -6,6 +6,8 @@ data
 docs
 other
 output
+gis
 .Rproj
 .Rapp.history
 .pdf
+try_maps_plots_plants.R
